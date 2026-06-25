@@ -2,9 +2,9 @@
 title: '**Fiche station - `r params$libelle_station` (`r params$code_station`)**'
 output:
   pdf_document:
+    
     latex_engine: xelatex
     toc: false
-    
 header-includes:
   - \usepackage{fontspec}
   - \setmainfont{Calibri}
@@ -12,7 +12,6 @@ header-includes:
   - \usepackage{fancyhdr}
   - \pagestyle{fancy}
   - \fancyhf{}
-  
   - \fancyfoot[L]{`r params$auteur`}
   - \fancyfoot[C]{\thepage}
   - \fancyfoot[R]{`r format(Sys.time(), '%d %B %Y')`}
@@ -24,14 +23,12 @@ header-includes:
     \renewcommand{\footrulewidth}{0pt}}
   - \usepackage{float}
   - \usepackage{placeins}
-
 params:
   code_station: ""
   auteur: ""
   libelle_station: ""
 editor_options:
   chunk_output_type: console
-
 ---
 
 ```{r setup, include=FALSE}
@@ -52,7 +49,7 @@ knitr::opts_chunk$set(echo = FALSE,
 > Les prélèvements effectués permettent ensuite de calculer les indices d'état biologique suivants : Indice Poisson Rivière (IPR), Indice Biologique Macrophyte en Rivière (IBMR), Indice Macro-invertébrés Multimétrique (I2M2) et Indice Biologique Diatomées (IBD).  
 > Ces indices donnent des résultats sous forme de classes d'état biologique, allant de « Très bon » à « Mauvais ».
 
-```{r message=FALSE, warning=FALSE, echo = FALSE}
+```{r chargement_packages, message=FALSE, warning=FALSE, echo = FALSE}
 library(tidyverse)
 library(sf)
 library(ggtext)
@@ -80,7 +77,7 @@ mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
 ```
 
 
-```{r message=FALSE, warning=FALSE, echo = FALSE}
+```{r chargement_fonctions, message=FALSE, warning=FALSE, echo=FALSE}
 source(here::here("R", "fun_classe_ecologique.R"))
 source(here::here("R/fiches_stations", "fun_table_info_station.R"))
 source(here::here("R/fiches_stations", "fun_graph_landuse.R"))
@@ -93,7 +90,7 @@ source(here::here("R/fiches_stations", "fun_carte_localisation.R"))
 
 # 1. Informations sur la station
 
-```{r, echo=FALSE, results='asis'}
+```{r Info_station, echo=FALSE, results='asis'}
 a <- carte_station(id_station = params$code_station)
 
 b <- create_table(
@@ -122,14 +119,14 @@ cat("\\end{minipage}\n")
 ```
 
 # 2. Occupation du sol
-```{r, fig.width=8, fig.height=4, out.width="0.9\\textwidth", fig.align='center'}
+```{r occupation_sol, fig.width=8, fig.height=4, out.width="0.9\\textwidth", fig.align='center'}
 landuse(data=stations_envt,
         id_station=params$code_station)
 ```
 \FloatBarrier
 # 3. Etat biologique de la station au cours du temps
 
-```{r, echo=FALSE, out.width="0.9\\textwidth"}
+```{r Etat_biologique , echo=FALSE, out.width="0.9\\textwidth"}
 
 c <- tab_element_declassant(
   data = element_declassant,
@@ -147,7 +144,7 @@ knitr::include_graphics(tab2_path_tex)
 
 # 4. Tendance temporelle des indices d'état biologique
 
-```{r, fig.width=12, fig.height=9, out.width="1\\textwidth", fig.align='center'}
+```{r Tendances_indices, fig.width=12, fig.height=9, out.width="1\\textwidth", fig.align='center'}
 graph_lmm(data=BDD_indices,
           tendances_RCS = valeurs_lmm_RCS,
           tendances_RRP = valeurs_lmm_RRP,
@@ -165,7 +162,7 @@ graph_lmm(data=BDD_indices,
 - **Indice d’équitabilité de Piélou** = mesure de la répartition des espèces au sein d’une communauté donnée. lorsque cet indice est proche de 0, cela traduit une dominance de la communauté par une espèce, lorsqu'il est proche de 1 ça traduit une distribution des individus uniforme entre toutes les espèces.
 
 
-```{r, fig.width=14, fig.height=13,  out.width="1\\textwidth", fig.align='center'}
+```{r metriques, fig.width=14, fig.height=13,  out.width="1\\textwidth", fig.align='center'}
 graph_metriques(data=BDD_metriques,
                 id_station=params$code_station)
 ```
