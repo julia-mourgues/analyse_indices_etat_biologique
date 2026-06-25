@@ -1,0 +1,523 @@
+---
+title: "Création des bases de données communes"
+author: "Julia"
+date: "2026-02-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Ce script permet de construire une base de données commune aux données ASPE et Naïades afin de représenter l'évolution des indices au cours des années
+
+L'objectif est d'obtenir 4 tables:
+- "BDD_info_stations" contenant les informations relatives au station (nom et localisation)
+- "BDD_indices" contenant les valeurs des différents indices 
+- "BDD_metriques" contenant les valeurs des métriques calculées à part
+- "BDD_taxo" contenant la taxonomie 
+
+
+# Installation
+
+## Chargement des packages
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(sf) #permet de manipuler des données spatiales
+library(lubridate)
+library(here)
+library(stringr)
+```
+
+## Chargement des données
+
+```{r}
+load(here("Data/clean_data", "aspe_clean_data.rda"))
+load(here("Data/clean_data", "hydrobio_clean_data.rda"))
+mes_stations_sans_RHP <- readRDS(here("Data/clean_data", "mes_stations_sans_RHP.rds"))
+```
+
+## Chargement des fonctions
+
+```{r}
+source(here::here("R","fun_cycle_DCE.R"))
+source(here::here ("R","fun_calc_metriques_IBMR.R"))
+source(here::here ("R","fun_calc_metriques_IBD.R"))
+source(here::here ("R","fun_calc_metriques_I2M2.R"))
+source(here::here ("R","fun_calc_metriques_IPR.R"))
+```
+
+# Table contenant les informations relatives au station (nom et localisation)
+
+```{r}
+names(aspe_stations)
+names(hydrobio_stations_clean)
+
+info_stations <- aspe_stations %>% 
+  left_join(hydrobio_stations_clean %>% 
+              st_drop_geometry() %>% 
+              select(code_station_hydrobio,
+                     code_cours_eau,
+                     libelle_cours_eau,
+                     code_commune,
+                     libelle_commune,
+                     libelle_departement,
+                     libelle_region),
+            by=c("sta_code_sandre"="code_station_hydrobio"))
+```
+
+
+## Sauvegarder le résutat au format .rds
+
+```{r}
+saveRDS(info_stations, here("Data/clean_data","BDD_info_stations.rds"))
+```
+
+
+# Base de données contenant la taxonomie
+Les script 011 et 012 nous ont permis de télécharger deux tables contenant les données de taxonomie pour ASPE et hydrobio. Nous partons donc de ces 2 tables.
+Nous allons devoir harmoniser les variables avant d'effectuer la jointure
+
+## Préparation des données
+### Données Aspe
+
+```{r}
+aspe_taxo_light <- aspe_taxo %>%
+  filter(sta_code_sandre %in% mes_stations_sans_RHP) %>%
+  mutate(
+    code_support = "4",
+    #création de variables qui nous permettrons de faire une jointure
+    libelle_support = "Poissons",
+    code_indice = "7036",
+    libelle_indice = "IPR",
+    type_resultat="NbrTax"
+  ) %>%
+  dplyr::select(-sta_id, 
+                -pop_id,
+                -lop_id,
+                -tlo_id,
+                -tyl_id,
+                -pre_id, 
+                -code_sta_pp, 
+                -code_sandre_pp,
+                -ends_with("_x"),
+                -ends_with("_y"),
+                -esp_nom_commun,
+                -opi_version_script,
+                -pop_bas_id,
+                -bas_libelle_sandre)%>% 
+  mutate(esp_id=as.character(esp_id))
+
+#Création d'un dictionnaire pour renommer les variables aspe
+map_aspe_taxo <- c(
+  code_station = "sta_code_sandre",
+  libelle_station = "sta_libelle_sandre",
+  code_departement = "dept",
+  code_prelevement = "ope_id",
+  date_prelevement = "ope_date",
+  id_classe = "cli_id",
+  libelle_classe = "cli_libelle",
+  reseaux ="obj_libelle",
+  libelle_qualification ="niq_libelle",
+  operateur="operateur_peche",
+  code_taxon = "esp_id",
+  libelle_taxon="esp_nom_latin",
+  code_lot="tyl_libelle",
+  resultat_taxon="lop_effectif",
+  code_taxon_lettre="esp_code_alternatif",
+  type_peche = "tpe_libelle",
+  numero_passage_peche="pas_numero",
+  ope_surface_calculee_peche="ope_surface_calculee"
+)
+```
+
+### Données hydrobio
+
+```{r}
+hydrobio_taxo_light <- hydrobio_taxo_final %>%
+  filter(code_station_hydrobio %in% mes_stations_sans_RHP) %>%
+ dplyr::select(
+    -codes_indices_operation,
+    -code_qualification,
+    -largeur_moyenne_lame_eau,
+    -longueur_prospectee
+  ) 
+
+#Création d'un dictionnaire pour renommer les variables hydrobio
+map_hydrobio_taxo <- c(
+  code_station = "code_station_hydrobio",
+  libelle_station = "libelle_station_hydrobio",
+  code_departement = "code_departement",
+  reseaux="RESEAU",
+  operateur = "NomPreleveur",
+  code_taxon ="code_appel_taxon",
+  libelle_taxon ="libelle_appel_taxon",
+  code_lot = "code_lot",
+  type_resultat="libelle_type_resultat"
+)
+```
+
+### Appliquer les dictionnaires aux tables
+
+```{r}
+hydrobio_taxo_light2 <- hydrobio_taxo_light %>% 
+  rename(any_of(map_hydrobio_taxo)) %>% 
+  mutate(reseaux=case_when(
+    code_station =="03245970"~"RCS",
+    TRUE ~ reseaux
+  ))
+
+
+aspe_taxo_light2 <- aspe_taxo_light %>% 
+  rename(any_of(map_aspe_taxo))%>%
+  mutate(code_prelevement = as.character(code_prelevement))
+```
+
+### Effectuer la jointure
+
+```{r}
+BDD_taxo <- bind_rows(hydrobio_taxo_light2, aspe_taxo_light2) %>%
+  rename(code_taxon_sandre = code_taxon) %>%
+  mutate(
+    code_taxon_sandre = as.numeric(code_taxon_sandre),
+    libelle_taxon = libelle_taxon %>% 
+      str_remove(" var\\..*$") %>% 
+      str_remove(" abnormal form.*$") %>% 
+      str_remove(" f\\..*$") %>% 
+      str_remove(" ssp\\..*$"),
+    code_departement= case_when(
+      code_departement== "28" ~ "27",
+      TRUE~code_departement
+    )
+  )
+```
+
+
+
+### Mettre à jour les codes et appellations taxons
+Pour cette étape nous alons diviser le tableau en 4 pour traiter les support biologiques séparément.
+
+```{r}
+BDD_taxo_IPR <- BDD_taxo %>% 
+  filter(code_support==4) %>% 
+  funRegroup() %>% 
+  mutate(across(c(Typologie_clean, libelle_typologie), ~ as.character(unname(.x))))
+```
+
+
+```{r}
+BDD_taxo_IBMR <- BDD_taxo %>% 
+  filter(code_support==27) %>% 
+ dplyr::select(-code_taxon_lettre) %>% 
+  funTranscodeIBMR() %>% 
+  funIBMR() %>% 
+  funKi() %>% 
+  mutate(across(c(Typologie_clean, libelle_typologie), ~ as.character(unname(.x))))
+
+```
+
+```{r}
+BDD_taxo_IBD <- BDD_taxo %>% 
+  filter(code_support==10) %>% 
+ dplyr::select(-code_taxon_lettre) %>% 
+  FunParamsIBD()%>% 
+  rename(code_taxon_lettre=AFNOR) %>% 
+  mutate(across(c(Typologie_clean, libelle_typologie), ~ as.character(unname(.x))))
+```
+
+```{r}
+BDD_taxo_I2M2 <- BDD_taxo %>% 
+  filter(code_support==13) %>% 
+  funTranscodeI2M2(table_transcodage_I2M2) %>% 
+  funEffBocaux_hubeau() %>% 
+  mutate(across(c(Typologie_clean, libelle_typologie), ~ as.character(unname(.x))))
+```
+
+## Effectuer une jointure entre les 4 tables
+```{r}
+BDD_taxo_final <- bind_rows(BDD_taxo_IPR, BDD_taxo_IBMR, BDD_taxo_IBD, BDD_taxo_I2M2)
+```
+
+## Sauvegarder le résutat au format .rds
+
+```{r}
+saveRDS(BDD_taxo_final, here("Data/clean_data","BDD_taxo.rds"))
+```
+
+
+# Base de données contenant les métriques
+Pour chaque support biologique nous allons calculer:
+- Richesse spécifique
+- Diversité de Shannon
+- Equitabilité de Pielou
+
+Puis nous calculerons les métriques constitutives des indices lorsque cela est possible.
+
+## Récupérer les métriques de l'IPR déjà fournis par ASPE
+```{r}
+#Réarranger la table
+aspe_metriques_light <- aspe_metriques %>%
+  filter(sta_code_sandre %in% mes_stations_sans_RHP) %>%
+  mutate(
+    code_support = "4",
+    #création de variables qui nous permettrons de faire une jointure
+    libelle_support = "Poissons",
+    code_indice = "7036",
+    libelle_indice = "IPR"
+  ) %>%
+  dplyr::select(-sta_id,
+                -pop_id,
+                -obj_id,
+                -niq_libelle,
+                -code_sta_pp, 
+                -code_sandre_pp,
+                -operateur_peche,
+                -ope_surface_calculee,
+                -opi_version_script,
+                -code_sandre_pp,
+                -ends_with("_x"),
+                -ends_with("_y"),
+                -pop_bas_id,
+                -bas_libelle_sandre)
+
+#Renommer les variables et mettre au format long
+map_aspe_metriques <- c(
+  code_station = "sta_code_sandre",
+  libelle_station = "sta_libelle_sandre",
+  code_departement = "dept",
+  code_prelevement = "ope_id",
+  date_prelevement = "ope_date",
+  reseaux="obj_libelle"
+)
+
+aspe_metriques_light2 <- aspe_metriques_light %>%
+  rename(any_of(map_aspe_metriques))%>%
+  mutate(code_prelevement = as.character(code_prelevement)) %>%
+  pivot_longer(cols = c(ner_observe, nel_observe, nte_observe, dit_observe, dio_observe, dii_observe, dti_observe),
+      names_to = "libelle_metrique",
+      values_to = "resultat_metrique")
+
+
+aspe_metriques_light2$libelle_metrique <- forcats::fct_recode(
+  aspe_metriques_light2$libelle_metrique,
+  "nte observe (IPR)" = "nte_observe",
+  "ner observe (IPR)" ="ner_observe",
+  "nel observe (IPR)" = "nel_observe",
+  "dit observe (IPR)" ="dit_observe",
+  "dii observe (IPR)"="dii_observe",
+  "dio observe (IPR)"="dio_observe",
+  "dti observe (IPR)"="dti_observe"
+  )
+```
+
+## Calcul des métriques
+
+
+```{r}
+ BDD_metriques_IPR <- BDD_taxo_IPR %>%
+   funMetriquesIPR() %>%
+   bind_rows(aspe_metriques_light2)
+```
+
+```{r}
+BDD_metriques_I2M2 <- bind_rows(
+  funMetriquesI2M2(BDD_taxo_I2M2))
+```
+
+```{r}
+BDD_taxo_IBMR2<-BDD_taxo_IBMR %>% 
+  funRegroupeIBMR()
+
+BDD_metriques_IBMR <- bind_rows(
+  funComplementaireIBMR(BDD_taxo_IBMR2),
+  funMetriquesIBMR(BDD_taxo_IBMR2)
+)
+```
+
+```{r}
+BDD_metriques_IBD <- bind_rows(
+  funMetriquesIBD(BDD_taxo_IBD))
+```
+
+
+## Effectuer la jointures des tables contenant les métriques
+```{r}
+BDD_metriques <- bind_rows(BDD_metriques_IPR,BDD_metriques_I2M2,BDD_metriques_IBMR,BDD_metriques_IBD)
+BDD_metriques <- BDD_metriques %>% 
+  mutate(resultat_metrique=round(resultat_metrique,3),
+         code_departement= case_when(
+         code_departement== "28" ~ "27",
+         TRUE~code_departement))
+```
+
+
+## Sauvegarder le résutat au format .rds
+
+```{r}
+saveRDS(BDD_metriques, here("Data/clean_data","BDD_metriques.rds"))
+```
+
+
+# Base de données contenant les indices
+
+### Données Aspe
+
+```{r}
+aspe_indices_light <- aspe_indices %>%
+  filter(sta_code_sandre %in% mes_stations_sans_RHP) %>% 
+  mutate(
+    code_support = "4",
+    #création de variables qui nous permettrons de faire une jointure
+    libelle_support = "Poissons",
+    code_indice = "7036",
+    libelle_indice = "IPR",
+    resultat_eqr = ipr, # pour correspondre au format des données hydrobio. Ici l'IPR est deja un eqr donc il n'y a pas de transformation
+    niq_libelle=case_when(
+      niq_libelle=="Correcte" ~"correcte",
+      TRUE ~NA_character_
+    )
+  ) %>%
+  rename(resultat_indice = ipr) %>%
+  dplyr::select(-sta_id, 
+                -pop_id, 
+                -ope_surface_calculee,
+                -code_sandre_pp,
+                -code_sta_pp,
+                -obj_id,
+                -cli_borne_inf,
+                -cli_borne_sup,
+                -cli_id,
+                -opi_version_script,
+                -pop_bas_id,
+                -bas_libelle_sandre
+                )
+ 
+```
+
+### Données hydrobio
+
+```{r}
+hydrobio_stations_indices_light <- hydrobio_stations_indices %>%
+  filter(code_station_hydrobio %in% mes_stations_sans_RHP) %>%
+ dplyr::select(
+    -code_cours_eau,
+    -libelle_cours_eau,
+    -NomProducteur
+  )
+```
+
+## 2.Base de données avec les indices au format long et toutes les métriques au format large
+
+Nous allons utiliser "full_join". Cette fonction nécessite d'avoir les mêmes noms de variables dans les deux tableaux.
+
+### A. On crée des dictionnaires permettant de renommer les variables
+
+```{r}
+map_hydrobio <- c(
+  code_station = "code_station_hydrobio",
+  libelle_station = "libelle_station_hydrobio",
+  code_departement = "code_departement",
+  coord_point_x= "coord_point_x_L93",
+  coord_point_y= "coord_point_y_L93",
+  reseaux="RESEAU",
+  operateur = "NomPreleveur",
+  resultat_indice="resultat_indice_SEEE",
+  resultat_eqr="eqr_indice",
+  libelle_classe="classe_indice_SEEE"
+)
+
+map_aspe <- c(
+  code_station = "sta_code_sandre",
+  libelle_station = "sta_libelle_sandre",
+  code_departement = "dept",
+  coordonnee_x = "sta_coordonnees_x",
+  coordonnee_y = "sta_coordonnees_y",
+  code_prelevement = "ope_id",
+  date_prelevement = "ope_date",
+  id_classe = "cli_id",
+  libelle_classe = "cli_libelle",
+  reseaux ="obj_libelle",
+  operateur="operateur_peche",
+  coord_point_x= "pop_coordonnees_x",
+  coord_point_y= "pop_coordonnees_y",
+  libelle_qualification= "niq_libelle"
+
+)
+```
+
+Nous appliquons ces dictionnaires à nos tableaux
+
+```{r}
+hydrobio_stations_indices_light <- hydrobio_stations_indices_light %>% 
+  rename(any_of(map_hydrobio)) %>% 
+  mutate(coord_point_x = as.numeric(coord_point_x),
+         coord_point_y = as.numeric(coord_point_y),
+        reseaux=case_when(
+          code_station =="03245970"~"RCS",
+          TRUE ~ reseaux))
+
+
+aspe_indices_light <- aspe_indices_light %>% 
+  rename(any_of(map_aspe))%>%
+  mutate(code_prelevement = as.character(code_prelevement))
+```
+
+### B. On effectue la jointure
+
+```{r}
+BDD_indices <- bind_rows(hydrobio_stations_indices_light, aspe_indices_light)
+```
+
+#### Faire les derniers arrangement des données
+
+```{r}
+BDD_indices <- BDD_indices %>% 
+  mutate(
+    annee = as.numeric(annee),
+    cycle_DCE = cycle_DCE(var_temp = annee),
+    code_departement= case_when(
+      code_departement== "28" ~ "27",
+      TRUE~code_departement
+    )) %>%
+  group_by(code_station, code_support, code_indice, annee) %>%
+  filter(date_prelevement == max(date_prelevement)) %>% 
+  distinct(date_prelevement, .keep_all = TRUE) %>% 
+  ungroup()
+```
+
+### Sauvegarder le résutat au format .rds
+
+```{r}
+saveRDS(BDD_indices, here("Data/clean_data","BDD_indices.rds"))
+```
+
+# Base de données au format large indices et métriques
+
+```{r}
+id_colonne <- c(
+    "code_station","libelle_station","code_departement","reseaux","date_prelevement", "annee", "code_prelevement","Typologie","Typologie_clean","libelle_typologie", "code_support", "libelle_support"
+  )
+```
+
+```{r}
+BDD_metriques_large <- BDD_metriques %>% 
+  distinct() %>% 
+  ungroup() %>% 
+  pivot_wider(names_from=libelle_metrique,
+              values_from=resultat_metrique,
+              id_cols=all_of(id_colonne))
+```
+
+
+```{r}
+BDD_indices_metriques <- left_join (BDD_indices, 
+                                    BDD_metriques_large,
+                                    by=id_colonne )
+```
+
+### Sauvegarder le résutat au format .rds
+
+```{r}
+saveRDS(BDD_indices_metriques, here("Data/clean_data","BDD_indices_metriques.rds"))
+```

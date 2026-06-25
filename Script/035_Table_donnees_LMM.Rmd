@@ -1,0 +1,564 @@
+---
+title: "table donnees LMM"
+author: "Julia"
+date: "2026-05-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Installation
+
+## Chargement des packages
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(sf)
+library(ggtext)
+library(gt)
+```
+
+## Chargement des données
+```{r}
+fichiers_donnees <- list.files(
+  path = "../Data/clean_data/Models",         
+  pattern = "^donnees_models.*\\.rds$",
+  full.names = TRUE
+)
+
+liste_tables_donnees <- lapply(fichiers_donnees, readRDS)
+
+donnees_LMM <- bind_rows(liste_tables_donnees) 
+
+fichiers_pentes <- list.files(
+  path = "../Data/clean_data/Models",         
+  pattern = "^pentes_LMM.*\\.rds$",
+  full.names = TRUE
+)
+
+liste_tables_pentes <- lapply(fichiers_pentes, readRDS)
+
+pentes_LMM <- bind_rows(liste_tables_pentes)
+```
+
+
+
+On en profite pour rassembler les données issues des lmm et qui seront utilisées pour la création des fiches stations
+```{r}
+fichiers_lignes <- list.files(
+  path = "../Data/clean_data/Models",         
+  pattern = "^lines_by_station.*\\.rds$",
+  full.names = TRUE
+)
+
+liste_tables_lignes <- lapply(fichiers_lignes, readRDS)
+valeurs_lmm_station <- bind_rows(liste_tables_lignes) 
+
+fichiers_graph_RCS <- list.files(
+  path = "../Data/clean_data/Models",         
+  pattern = "^data_graph_RCS.*\\.rds$",
+  full.names = TRUE
+)
+
+liste_tables_graph_RCS <- lapply(fichiers_graph_RCS, readRDS)
+valeurs_lmm_RCS <- bind_rows(liste_tables_graph_RCS)
+
+fichiers_graph_RRP <- list.files(
+  path = "../Data/clean_data/Models",         
+  pattern = "^data_graph_RRP.*\\.rds$",
+  full.names = TRUE
+)
+
+liste_tables_graph_RRP <- lapply(fichiers_graph_RRP, readRDS)
+valeurs_lmm_RRP <- bind_rows(liste_tables_graph_RRP)
+```
+
+
+```{r}
+save(valeurs_lmm_station,
+     valeurs_lmm_RCS,
+     valeurs_lmm_RRP,
+     pentes_LMM,
+     donnees_LMM,
+     file = "../Data/clean_data/results_LMM.rda")
+```
+
+
+## Arrangement des données
+```{r}
+donnees_LMM2 <- donnees_LMM %>%
+  select(-intercept_estimate, -intercept_pvalue ) %>% 
+  rename(pente=annee_estimate,
+         p_value=annee_pvalue) %>% 
+  mutate(periode= case_when(
+    reseaux=="RRP" ~ "2013-2024",
+    reseaux=="RCS" ~"2007-2024",
+    TRUE ~NA
+  )) %>% 
+  select(libelle_indice,
+         reseaux,
+         periode,
+         pente, 
+         p_value,
+         R2_marginal,
+         R2_conditionnel)
+```
+
+
+# Tableau contenant les résultats globaux des LMM par indices et réseaux
+```{r}
+table_recap <- donnees_LMM2 %>% 
+  mutate(reseaux=paste("Réseau ", reseaux)) %>% 
+  group_by(reseaux) %>% 
+  gt() %>% 
+  cols_hide(columns = c(reseaux)) %>% 
+  gt::tab_header(
+      title = md("**Résultats des modèles linéaires mixtes modélisant les tendances des indices par réseaux.**"),
+      subtitle = md("**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05).")) %>% 
+  gt::cols_label(
+      libelle_indice = "Indice",
+      reseaux = "Réseau",
+      periode = "Période",
+      pente = "Pente",
+      R2_marginal= "R2 marginal",
+      R2_conditionnel = "R2 conditionnel"
+    ) %>%
+  opt_row_striping() %>% 
+  tab_style(
+    style = list(
+      cell_text(weight = "bold", size = px(14)),
+      cell_fill(color = "#f7f7f7")
+    ),
+    locations = cells_row_groups()
+  ) %>% 
+  tab_style(
+    style = cell_text(weight = "bold"),  # Texte en gras
+    locations = cells_column_labels(everything()) # Cible les étiquettes de colonnes
+  ) %>% 
+  tab_style(
+      style = cell_text(weight = "bold"),
+      locations = cells_body(
+        columns = c(pente),
+        rows = p_value < 0.05
+      ))%>% 
+  tab_style(
+    style = cell_text(color = "red"),
+    locations = cells_body(
+      columns = c(pente),
+      rows = pente < 0
+    )
+  ) %>% 
+  tab_style(
+    style = cell_text(color = "#32CD32"),
+    locations = cells_body(
+      columns = c(pente),
+      rows = pente > 0
+    )
+  )
+
+table_recap
+gtsave(table_recap, filename = "../Output/1_Tendance_indice/03_LMM/resultats_globaux_modeles.pdf")
+```
+
+# Tableau contenant le nombre de stations qui s'améliorent ou se déteriorent
+```{r}
+stat_pentes_global <- pentes_LMM %>% 
+  group_by(libelle_indice, reseaux) %>% 
+  summarise(n_amelioration = sum(pente > 0, na.rm = TRUE),
+            n_deterioration= sum(pente < 0, na.rm = TRUE),
+            n_total = n_distinct(code_station),
+            .groups ="drop")
+
+stat_pentes_dept <- pentes_LMM %>% 
+  group_by(code_departement, libelle_indice, reseaux) %>% 
+  summarise(n_amelioration = sum(pente > 0, na.rm = TRUE),
+            n_deterioration= sum(pente < 0, na.rm = TRUE),
+            n_total = n_distinct(code_station),
+            .groups ="drop")
+```
+
+
+
+```{r}
+table_stat_global <- stat_pentes_global %>% 
+  mutate(reseaux=paste("Réseau ", reseaux)) %>% 
+  group_by(reseaux) %>% 
+  gt() %>% 
+  cols_hide(columns = c(reseaux)) %>% 
+  gt::tab_header(
+      title = md("**Nombre de stations dont l'état biologique s'améliore et se déteriore, par indice et par réseaux.**"),
+      subtitle = md("**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05).")) %>% 
+  gt::cols_label(
+      libelle_indice = "Indice",
+      reseaux = "Réseau",
+      n_amelioration= "Stations en amélioration", 
+      n_deterioration= "Stations en déterioration",
+      n_total="Nombre de stations total"
+    ) %>%
+  opt_row_striping() %>% 
+  tab_style(
+    style = list(
+      cell_text(weight = "bold", size = px(14)),
+      cell_fill(color = "#f7f7f7")
+    ),
+    locations = cells_row_groups()
+  ) %>% 
+  tab_style(
+    style = cell_text(weight = "bold", size=px(14)),  # Texte en gras
+    locations = cells_column_labels(everything()) # Cible les étiquettes de colonnes
+  ) %>% 
+  tab_style(
+    style = cell_text( size=px(13)),  
+    locations = cells_body()) 
+
+table_stat_global
+gtsave(table_stat_global, filename = "../Output/1_Tendance_indice/03_LMM/nombre_stations_amelioration.pdf")
+
+table_stat_dept <- stat_pentes_dept %>% 
+  mutate(code_departement= paste("Département ",code_departement),
+         reseaux=paste("Réseau ", reseaux)) %>% 
+  group_by(code_departement,reseaux) %>% 
+  gt() %>% 
+  cols_hide(columns = c(code_departement, reseaux)) %>% 
+  gt::tab_header(
+      title = md("**Nombre de stations dont l'état biologique s'améliore et se déteriore, par département, réseaux et indice.**"),
+      subtitle = md("**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05).")) %>% 
+  gt::cols_label(
+      libelle_indice = "Indice",
+      reseaux = "Réseau",
+      n_amelioration= "Stations en amélioration", 
+      n_deterioration= "Stations en déterioration",
+      n_total="Nombre de stations total"
+    ) %>%
+  opt_row_striping() %>% 
+  tab_style(
+    style = list(
+      cell_text(weight = "bold", size = px(14)),
+      cell_fill(color = "#f7f7f7")
+    ),
+    locations = cells_row_groups()
+  ) %>% 
+  tab_style(
+    style = cell_text(weight = "bold", size=px(14)),  # Texte en gras
+    locations = cells_column_labels(everything()) # Cible les étiquettes de colonnes
+  ) %>% 
+  tab_style(
+    style = cell_text( size=px(13)),  
+    locations = cells_body()) 
+
+table_stat_dept
+gtsave(table_stat_dept, filename = "../Output/1_Tendance_indice/03_LMM/nombre_stations_amelioration_dept.pdf")
+```
+
+
+# Carto avec les tendances des stations
+
+```{r}
+## Projection Lambert 93
+crs_lambert93 <- sf::st_crs(2154)
+
+## pour fond de carte
+background <-
+  rnaturalearth::ne_countries(continent = 'europe', scale = 50) %>%
+  sf::st_as_sf() %>%
+  sf::st_make_valid() %>%
+  sf::st_crop(
+    xmin = -5.4,
+    xmax = 8.6,
+    ymin = 41,
+    ymax = 52
+  ) %>%
+      sf::st_transform(crs = crs_lambert93)
+
+## pour les limites des régions/départements
+regions_FR <-
+    rnaturalearth::ne_states(country = "France", returnclass = "sf") %>%
+    sf::st_transform(crs = crs_lambert93) %>%
+    sf::st_make_valid() %>%
+    dplyr::filter(type != "Overseas département")
+
+## la normandie
+region_normandie <-
+  regions_FR %>%
+  dplyr::filter(region == 'Normandie')
+
+## bbox de la normandie pour zoomer
+bbox_normandie <-
+  region_normandie %>%
+  sf::st_buffer(dist = 20000) %>%
+  sf::st_bbox()
+
+## données hydro bassins
+district_limits <-
+  tod::wfs_sandre(
+    url_wfs = "https://services.sandre.eaufrance.fr/geo/topage?",
+    couche = "BassinHydrographique_FXX") %>%
+      sf::st_transform(crs = crs_lambert93)
+```
+
+
+```{r}
+## couche SIG des station sur le réseau
+stations <-
+  sf::read_sf(
+    "\\\\ad.intra\\dfs\\COMMUNS\\REGIONS\\nor\\DR\\OFB\\SIG\\DR\\IG_METIER\\EAU\\PECHE\\Stations_reseaux.gpkg"
+  ) %>%
+  sf::st_transform(crs = crs_lambert93) %>%
+  dplyr::filter(Etat == "actif") %>%
+  dplyr::select(station=`Code Station SANDRE`, nom = `LIBELLE SANDRE`)
+
+```
+
+```{r}
+pentes_LMM_large<- pentes_LMM %>% 
+  pivot_wider(
+    values_from= pente,
+    names_from = libelle_indice) 
+```
+
+```{r}
+stations <- stations %>%
+  left_join(pentes_LMM,
+            by=c("station"="code_station")) %>%
+  filter(!is.na(reseaux)) %>%
+  dplyr::mutate(
+    trend = factor(
+      case_when(
+        pente < 0  ~ "Dégradation",
+        pente == 0 ~ "Absence de tendance",
+        pente > 0  ~ "Amélioration",
+        TRUE       ~ NA_character_
+      ),
+      levels = c("Dégradation", "Absence de tendance", "Amélioration"),
+      ordered = TRUE
+    )
+  )
+
+## palettes de couleurs et symboles pour les tendances
+palette_col <- setNames(
+  c("#f94144", "#6F6F6F", "#32CD32"),
+  c("Dégradation", "Absence de tendance", "Amélioration")
+)
+
+symbol <-
+  setNames(
+    c(21, 23),
+    c("RCS", "RRP"))
+```
+```{r}
+## fond de carte
+base_map <-
+  ggplot2::ggplot(background) +
+  ggplot2::geom_sf(fill = "grey70") +
+  ggplot2::geom_sf(
+    data = background %>%  dplyr::filter(admin == 'France'),
+    fill = 'grey95'
+  ) +
+    ggplot2::geom_sf(
+    data = regions_FR,
+    fill = NA,
+    size = 0.1,
+    col = "black"
+  ) +
+  ggplot2::geom_sf(
+    data = region_normandie,
+    fill = "white",
+    size = 0.3,
+    col = "black"
+  ) +
+  ggplot2::geom_sf(
+    data = district_limits,
+    size = 0.8,
+    col = "dodgerblue",
+    alpha = 0
+  ) +
+  ggplot2::theme(panel.background = ggplot2::element_rect(fill = "lightblue")) +
+  ggplot2::coord_sf(
+    xlim = bbox_normandie[c(1, 3)],
+    ylim = bbox_normandie[c(2, 4)],
+    expand = F
+  )
+
+## carto des stations avec tendances
+map_stations <-
+  base_map +
+  ggplot2::geom_sf(
+    data = stations,
+    ggplot2::aes(
+      size = abs(pente),
+      fill = trend,
+      shape = reseaux
+    ),
+    col = 'black',
+    inherit.aes = F,
+    alpha = 0.9
+  ) +
+  ggplot2::facet_wrap(~libelle_indice)+
+  ggplot2::scale_size_continuous("Valeur tendance", range = c(1.5, 5)) +
+  ggplot2::scale_shape_manual("Réseau", values = symbol) +
+  ggplot2::scale_fill_manual("Tendance", values = palette_col) +
+  guides(
+  fill = guide_legend(
+    order = 1,
+    override.aes = list(shape = 21, size = 4, color = "black")
+  ),
+  shape = guide_legend(
+    order = 2,
+    override.aes = list(size = 4, stroke=1)
+  ))+
+  ggplot2::coord_sf(
+    xlim = bbox_normandie[c(1, 3)],
+    ylim = bbox_normandie[c(2, 4)],
+    expand = T
+  ) +
+  ggplot2::labs(
+    title = "Carte des tendances par sites et par indices (Pentes LMM) "
+  ) +
+  ggplot2::theme(
+    legend.key = ggplot2::element_rect(fill = "white"),
+    legend.position = "right",
+    legend.title = ggplot2::element_text(size = 12, face = "bold"),
+    legend.text = ggplot2::element_text(size = 12),
+    plot.title = ggtext::element_textbox_simple(size = 14, margin = margin(t=5,b=5),face = "bold"),
+    plot.subtitle = ggtext::element_textbox_simple(size = 13, margin = margin(t=5,b=5)),
+    strip.text = ggtext::element_textbox_simple(size=11, margin = margin(t=4, b=4),halign = 0.5),
+    strip.background = ggplot2::element_rect(fill = NA, color = "black"),
+    plot.caption = ggtext::element_textbox_simple(
+      size = 11,
+      hjust = 0,      # 0 = aligné à gauche, 1 = à droite
+      lineheight = 1.2,
+      margin=margin(t=10,b=5),
+      box.color = "black",
+      linewidth = 0.7,
+      width = unit(0.80, "npc")
+  )
+  )
+
+map_stations
+```
+```{r}
+ggplot2::ggsave(
+  filename = "../Output/1_Tendance_indice/03_LMM/carte_tendance_stations.jpg",
+  plot = map_stations,
+  width = 12,       
+  height = 10,       
+  dpi = 300
+)
+```
+
+
+
+
+# Histogrammes distribution des pentes
+
+## statistiques
+```{r}
+pentes_pct <- pentes_LMM %>%
+  group_by(libelle_indice, reseaux) %>%
+  summarise(n_total=n(),
+            n_pos = sum(pente > 0, na.rm = TRUE),
+            n_neg = sum(pente < 0, na.rm = TRUE),
+            n_null= sum(pente == 0, na.rm = TRUE),
+            pct_pos = 100 * n_pos / n_total,
+            pct_neg = 100 * n_neg / n_total,
+            pct_null = 100 * n_null / n_total
+      ) 
+```
+
+
+## Graphique
+```{r}
+pentes_LMM2 <- pentes_LMM %>%
+  mutate(
+    reseaux = factor(
+      reseaux,
+      levels = c("RRP", "RCS"),
+      ordered = TRUE
+    ),
+    libelle_indice= case_when(
+      libelle_indice=="IBD" ~"pente_IBD",
+      libelle_indice=="IBMR" ~"pente_IBMR",
+      libelle_indice=="I2M2" ~"pente_I2M2",
+      libelle_indice=="IPR" ~"pente_IPR",
+      TRUE~NA
+    )
+  )
+
+med_pentes <- pentes_LMM2 %>%
+  group_by(libelle_indice, reseaux) %>%
+  summarise(moyenne = mean(pente, na.rm = TRUE),
+            .groups = "drop") 
+style <- c(1, 2)
+
+distrib_pente <- ggplot(pentes_LMM2,
+                              aes(x = pente, fill=reseaux)) +
+  geom_histogram(show.legend = TRUE, color = "black", alpha=0.6) +
+  scale_fill_manual(
+    name = "Réseaux",
+    values = c(
+      "RCS" = "#CD6839",
+      "RRP" = "#2D0084"
+    )
+  ) +
+  geom_vline(
+    data = med_pentes,
+    aes(xintercept = moyenne, 
+        color= "Moyenne",
+        linetype = "Moyenne"),
+    linewidth = 1 
+  ) +
+  geom_vline(
+    
+    aes(xintercept = 0,color = "Zéro",
+        linetype = "Zéro"),
+    linewidth = 1
+  )+
+  scale_color_manual(
+  name = "Références",
+  values = c(
+    "Zéro" = "darkgrey",
+    "Moyenne" = "red"
+  )
+)+
+  scale_linetype_manual(
+  name = "Références",
+  values = c("Zéro" = "solid", "Moyenne" = "dashed")
+)+
+  guides(
+    fill = guide_legend(order = 1),
+    color = guide_legend(order = 2, override.aes = list(fill = "transparent")),
+    linetype = guide_legend(order = 2, override.aes = list(fill = "transparent"))
+  
+  )+
+
+  facet_grid( reseaux ~ libelle_indice, scales="free_y") +
+  theme_bw() +
+  labs(
+    title = "Distribution des pentes des tendances temporelles des indices issues des LMM.",
+    x = "Valeur de pente",
+    y = "Nombre"
+  )+
+  theme(plot.title = element_textbox_simple(size=13, face="bold", margin =margin(t=5, b=5)),
+        strip.text=element_text(size=13, face="bold"),
+        strip.text.y = element_blank(),
+        legend.title=element_text(size=13, face="bold"),
+        legend.text=element_text(size=13),
+        legend.key = element_rect(fill = NA, color = NA),
+        legend.background = element_blank() 
+      )
+
+#Télécharger l'histogramme
+ggsave(
+  filename = "distrib_pentes.png",
+  plot = distrib_pente,
+  width = 11,
+  height = 5,
+  dpi = 300,
+  path = "../Output/1_Tendance_indice/03_LMM"
+)
+```
+
+
+

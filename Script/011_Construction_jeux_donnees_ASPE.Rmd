@@ -1,0 +1,409 @@
+---
+title: "Construction du jeux de données ASPE"
+author: "Julia"
+date: "2026-01-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Ce script permet de construire le jeu de données rassemblant les informations de pêche.
+
+# Installation
+
+## Chargement des packages
+
+```{r message=FALSE, warning=FALSE}
+library(aspe)
+library(aspeCQFD)
+library(tidyverse) #contient ggplot2 dplyr, tidyr, readr, purrr, tibble, stringr, forcats
+library(stringr)
+library(here)
+```
+
+## Chargement des données issues de la base Aspe
+
+```{r}
+data_aspe <- misc_nom_dernier_fichier(repertoire="../Data/raw_data", pattern="^tables") 
+#Permet de sélectionner les données téléchargées le plus récemment
+load(data_aspe)
+```
+
+## Chargement de nos stations d'étude
+
+```{r}
+mes_stations_peche<- readRDS(here("Data/clean_data", "mes_stations_peche.rds"))
+mes_sta_pp <- readRDS(here("Data/clean_data", "mes_sta_pp.rds"))
+stations_typologie <- readRDS(here("Data/clean_data", "stations_typologie.rds"))
+context_stations <- readRDS(here("Data/raw_data", "context_stations.rds"))
+```
+
+## Mise en correspondance des tables principales
+
+Création d'une "passerelle" qui met en correspondance les identifiants des tables principales de la base
+
+```{r}
+passerelle <- aspe::mef_creer_passerelle()
+```
+
+# Données environnementales
+On commence par récupérer les données environnementales de chaque stations.
+```{r}
+context <- passerelle %>%
+  mef_ajouter_dept() %>%
+  mef_ajouter_codes_sandre_pp() %>%
+  filter(sta_code_sandre %in% mes_stations_peche,
+         code_sta_pp %in% mes_sta_pp) %>%
+  mef_ajouter_ope_env() %>%
+  dplyr::select(-sta_id,
+                -pop_id,
+                -code_sandre_pp,
+                -ope_id,
+                -pre_id,
+                -lop_id,
+                -largeur,
+                -profondeur) %>%
+  distinct() %>%
+  group_by(sta_code_sandre) %>%
+  summarise(
+    #garder une ligne par station
+    across(
+      where(is.numeric),
+      \(x) median(x, na.rm = TRUE) #si plusieurs données numériques différentes pour une station, on prend la médiane
+    ),
+    across(
+      where(~ !is.numeric(.x)),
+      #si plusieurs chaines de caractère différentes pour une station, on prend la premiere
+      \(x) first(x)
+    ),
+    .groups = "drop"
+  )
+```
+
+## Jointure avec une table contenant les données d'utilisation du sol
+```{r}
+context_stations2 <- context_stations %>%
+  dplyr::select(-Code.Station.SANDRE, -LIBELLE.SANDRE) %>%
+  left_join(context, by = "code_sta_pp") %>%
+  dplyr::select(
+    sta_code_sandre,
+    code_sta_pp,
+    sta_libelle_sandre,
+    dept,
+    sta_coordonnees_x,
+    sta_coordonnees_y,
+    everything()
+  )
+```
+
+## Sauvegarder la table
+```{r}
+saveRDS(context_stations2,
+        here("Data/clean_data", "context_stations_complet.rds"))
+```
+
+# Données piscicoles
+
+## Définition des paramètres
+
+Nous allons définir des paramètres qui vont nous permettre de simplifier les codes lors de la construction de notre jeux de données
+
+```{r}
+code_departement <- c("14","27","28","76", "61","50") #Départements qui nous intéressent
+
+mes_reseaux <- c("RCS – Réseau de Contrôle de Surveillance", # Réseaux de pêches
+                 "RRP – Réseau de Référence Pérenne",
+                 "RHP – Réseau Hydrobiologique Piscicole")
+
+annee_depart <- 2007
+annee_fin <- 2024
+```
+
+
+## Mise en correspondance des tables principales
+
+Création d'une "passerelle" qui met en correspondance les identifiants des tables principales de la base
+
+```{r}
+passerelle <- aspe::mef_creer_passerelle()
+```
+
+## Création de la base aspe_nor rassemblant toutes les données qui vont nous interesser
+
+Pour alléger les requêtes, on commence par sélectionner les départements correspondant à notre étude. Puis on ajoute les dates des opérations, la qualification des données, le libelle SANDRE des stations ainsi que les réseaux de pêche.
+
+
+```{r}
+aspe_nor <- passerelle %>% 
+  mef_ajouter_dept() %>% 
+  filter(dept %in% code_departement)%>%#Sélection des 5 départements normands 
+  mef_ajouter_ope_date() %>%#on ajoute les dates
+  mef_ajouter_qualification()%>% #ajout de la qualification des données (correcte/incorrecte)
+  mef_ajouter_codes_sandre_pp() %>% 
+  mef_ajouter_ipr()%>% #Ajouter les valeurs ipr
+  mef_ajouter_metriques() %>% 
+  mef_ajouter_objectif() %>%  #ajouter les réseaux de pêche
+  filter(obj_libelle %in% mes_reseaux) %>% 
+  mef_ajouter_intervenants() %>%
+  mef_ajouter_type_prelevement() %>% 
+  mef_ajouter_passage() %>% 
+  mef_ajouter_lots() %>%  #ajouter les lots de poissons
+  mef_ajouter_esp() %>% 
+  mef_ajouter_type_lot() %>% 
+  mef_ajouter_surf_calc()
+```
+
+Filtrer les données pour garder seulement nos stations et la période qui nous intéresse.
+
+```{r}
+aspe_nor <- aspe_nor %>%
+  filter(
+    sta_code_sandre %in% mes_stations_peche,
+    code_sta_pp %in% mes_sta_pp,
+    annee >= annee_depart,
+    annee <= annee_fin,
+    niq_libelle == "Correcte") %>%
+  mutate(
+    sta_libelle_sandre = str_to_sentence(str_to_lower(sta_libelle_sandre)),
+    operateur_peche= case_when (
+      str_detect(operateur_peche,"OFB") ~ "OFB",
+      TRUE ~  "Prestataire"
+    ),
+    obj_libelle= case_when(
+      str_detect(obj_libelle, "RRP") ~ "RRP",
+      str_detect(obj_libelle, "RCS") ~ "RCS",
+      str_detect(obj_libelle, "RHP") ~ "RHP",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  distinct()
+```
+
+```{r}
+
+# Vérifier que tous les noms ont été changés
+table(aspe_nor$operateur_peche)
+# Vérifier que tous les noms ont été changés
+table(aspe_nor$obj_libelle)
+```
+
+
+Récupérer et ajouter les coordonnées des points de prélèvement
+
+```{r}
+point_prelevement_selection <- point_prelevement %>% 
+ dplyr::select (pop_id, pop_coordonnees_x,pop_coordonnees_y, pop_bas_id)
+
+#Jointure
+aspe_nor <- aspe_nor %>% 
+  left_join(point_prelevement_selection, by="pop_id") %>% 
+  left_join(operation_ipr %>%dplyr::select(opi_ope_id,opi_version_script),
+            by=c("ope_id"="opi_ope_id")) %>% 
+  left_join(ref_bassin %>% 
+              select(bas_id, bas_libelle_sandre),
+            by=c("pop_bas_id"="bas_id"))
+```
+
+Certaines stations RRP sont considérées ont été attribuées à un autre réseaux selon les prélèvements, donc on défini toutes nos stations RRP.
+Nous avons choisie de retirer les stations appartenant au réseau de pêche RHP car trop peu de données étaient disponibles.
+```{r}
+aspe_reseaux_stations <- aspe_nor %>% 
+  group_by(sta_code_sandre) %>% 
+  summarise(
+    nb_reseaux = n_distinct(obj_libelle),
+    contient_RHP = "RHP" %in% obj_libelle,
+    contient_RRP = "RRP" %in% obj_libelle,
+    contient_RCS = "RCS" %in% obj_libelle
+  )
+```
+
+```{r}
+#Liste des stations RRP
+mes_stations_RRP <- aspe_reseaux_stations %>%
+  filter(contient_RRP==TRUE ) %>% 
+  group_by(sta_code_sandre) %>% 
+  pull(sta_code_sandre) %>% 
+  unique()
+
+#Liste des stations RCS
+mes_stations_RCS <- aspe_reseaux_stations %>%
+  filter(contient_RCS==TRUE & contient_RRP==FALSE ) %>% 
+  group_by(sta_code_sandre) %>% 
+  pull(sta_code_sandre) %>% 
+  unique()
+
+#Liste des stations sans RHP
+mes_stations_peche_sans_RHP <- aspe_reseaux_stations %>%
+  filter(!(contient_RHP==TRUE & contient_RRP==FALSE & contient_RCS==FALSE )) %>% 
+  group_by(sta_code_sandre) %>% 
+  pull(sta_code_sandre) %>% 
+  unique()
+```
+
+
+```{r}
+saveRDS(mes_stations_peche_sans_RHP, here("Data/clean_data","mes_stations_sans_RHP.rds"))
+saveRDS(mes_stations_RCS, here("Data/clean_data","mes_stations_RCS.rds"))
+saveRDS(mes_stations_RRP, here("Data/clean_data","mes_stations_RRP.rds"))
+```
+
+
+## Ajouter la typologie des stations, contenue dans une autre table
+
+```{r}
+aspe_nor2 <- aspe_nor %>% 
+  left_join(stations_typologie %>% select(-code_sta_pp),
+            by=c("sta_code_sandre"="Code.Station.SANDRE") ) %>% 
+  mutate(obj_libelle = case_when(
+    sta_code_sandre %in% mes_stations_RRP ~ "RRP",
+    sta_code_sandre %in% mes_stations_RCS ~ "RCS",
+    TRUE ~ obj_libelle
+  ))
+```
+
+## Création de la base aspe_stations 
+```{r}
+aspe_stations<-aspe_nor2%>%
+  select(dept,
+         sta_code_sandre,
+         sta_libelle_sandre,
+         sta_coordonnees_x,
+         sta_coordonnees_y,
+         obj_libelle,
+         bas_libelle_sandre,
+         Typologie,
+         Typologie_clean,
+         libelle_typologie
+         ) %>% 
+    distinct() #enlever les doublons causés par la variable lop_id dans aspe_nor
+
+```
+
+
+## Création de la base aspe_indices rassemblant les données IPR, les métriques par années et par station
+
+```{r}
+aspe_indices<-aspe_nor2%>%
+ dplyr::select(
+    -pre_id,
+    -lop_id,
+    -tyl_id,
+    -tlo_id,
+    -tpe_libelle,
+    -pas_numero,
+    -lop_effectif,
+    -esp_code_alternatif,
+    -esp_id,
+    -esp_nom_commun,
+    -esp_nom_latin,
+    -tyl_libelle,
+    -ends_with("theorique"),
+    -ends_with("observe"),
+    -ner,
+    -nel,
+    -nte,
+    -dit,
+    -dio,
+    -dii,
+    -dti,
+    -ope_int_id_operateur_peche,
+    -ope_int_id_commanditaire,
+    -ope_int_id_validation_technique,
+    -commanditaire,
+    -validation_technique,
+    -operateur_ofb,
+    -commanditaire_ofb,
+    -validation_ofb,
+    -LIBELLE.SANDRE,
+    -geom
+  ) %>% 
+  distinct() %>%  #enlever les doublons causés par la variable lop_id dans aspe_nor
+  left_join(classe_ipr %>%dplyr::select(cli_id, cli_borne_inf,cli_borne_sup),
+            by="cli_id")
+```
+
+```{r}
+aspe_metriques<-aspe_nor2%>%
+ dplyr::select(
+    -pre_id,
+    -lop_id,
+    -tyl_id,
+    -tlo_id,
+    -tpe_libelle,
+    -pas_numero,
+    -ipr,
+    -cli_id,
+    -cli_libelle,
+    -ends_with("theorique"),
+    -ner,
+    -nel,
+    -nte,
+    -dit,
+    -dio,
+    -dii,
+    -dti,
+    -lop_effectif,
+    -esp_code_alternatif,
+    -esp_id,
+    -esp_nom_commun,
+    -esp_nom_latin,
+    -tyl_libelle,
+    -ope_int_id_operateur_peche,
+    -ope_int_id_commanditaire,
+    -ope_int_id_validation_technique,
+    -commanditaire,
+    -validation_technique,
+    -operateur_ofb,
+    -commanditaire_ofb,
+    -validation_ofb,
+    -LIBELLE.SANDRE,
+    -geom
+  ) %>% 
+  distinct() #enlever les doublons causés par la variable lop_id dans aspe_nor
+```
+
+## Création de la base aspe_taxo rassemblant les données relatives aux espèces et leurs effectifs
+
+```{r}
+aspe_taxo <- aspe_nor2 %>%
+ dplyr::select(
+    -ipr,
+    -cli_id,
+    -cli_libelle,
+    -ends_with("theorique"),
+    -ends_with("observe"),
+    -ner,
+    -nel,
+    -nte,
+    -dit,
+    -dio,
+    -dii,
+    -dti,
+    -obj_id,
+    -ope_int_id_operateur_peche,
+    -ope_int_id_commanditaire,
+    -ope_int_id_validation_technique,
+    -commanditaire,
+    -validation_technique,
+    -operateur_ofb,
+    -commanditaire_ofb,
+    -validation_ofb,
+    -LIBELLE.SANDRE,
+    -geom
+  ) %>%
+  distinct()
+```
+
+
+# Sauvegarder sous forme de .Data
+
+```{r}
+save(aspe_nor,
+     aspe_stations,
+     aspe_indices,
+     aspe_metriques,
+     aspe_taxo,
+     file = "../Data/clean_data/aspe_clean_data.rda")
+```

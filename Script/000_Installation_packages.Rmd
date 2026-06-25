@@ -1,0 +1,66 @@
+---
+title: "000_Installation_packages"
+output: html_document
+---
+
+```{r}
+packages <-
+  c(
+    "aspe", # pour les données issues des pêches à l'électricité
+    "richaben/aspeCQFD",
+
+    "broom.mixed", # pour mettre en forme les sorties des modèles mixtes
+
+    "car", # pour faires les diagnostics de modèles
+    "cowplot", # pour organiser plusieurs graphs
+    
+    "DHARMa", # pour vérifier les conditions d'application des modeles
+    
+    "factoextra", # pour la visualisation des ACP, clustering
+    "FactoMineR", # pour les analyses multivariées
+    
+    "ggalluvial", # pour diagramme alluvial
+    "ggrepel", # pour eviter chevauchement des étiquettes sur les graphiques
+    "ggtext", # pour mettre en forme les titres et sous-titres 
+    "grDevices", # pour la gestion des sorties graphiques
+    "gt", # pour mettre en forme des tableaux
+    
+    "here", # pour gérer les chemins de fichiers
+    "hubeau", # pour acceder aux données hydrobio
+    
+    "lme4", # pour LMM
+    "lmerTest", # pour test d'application LMM
+    
+    "lubridate", # pour manipuler les dates
+    
+    "MuMIn", # pour la selection de modèles
+    
+    "NbClust", # pour determiner le nombre optimal de clusters
+    
+    "ordinal", # pour les modeles de regression ordinale
+    
+    "paletteer", # pour acceder aux palettes de couleurs
+    "pascalirz/tod", # pour les données hydro
+    "patchwork", # pour combiner plusieurs graphiques ggplot
+    "performance", # pour diagnostics et indicateurs de performance des modeles
+    "PerformanceAnalytics", # pour analyses stats et matrices de correlations
+    "pbapply", # pour faire afficher barre de chargement dans les boucles
+    
+    "readxl", # pour lire .xlsx
+    "rlang", # pour la programmation tidyverse
+    "ropensci/rnaturalearth", # pour les limites territoires
+    "ropensci/rnaturalearthdata",
+    
+    "scales", # pour gérer les echelles et formats dans les graphiques
+    "SEEEapi", # pour acceder aux algorithmes SEEE
+    "sf", # pour manipuler données spatiales
+    "shiny", # pour créer des applications interactives
+    "stats", # pour les fonctions statistiques de base
+    
+    "tidyverse", # meta-package rassemblant: dplyr, ggplot2, tidyr, readr, purrr, tibble, stringr, forcats)
+    "trend" # pour les test de tendances temporelles
+  )
+
+pak::pak(packages)
+```
+

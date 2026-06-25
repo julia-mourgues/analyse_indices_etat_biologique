@@ -1,0 +1,212 @@
+---
+title: "Sélection des stations qui seront étudiées"
+author: "Julia"
+date: "2026-02-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Ce script permet de sélectionner les stations qui seront étudiées sur la base de critères.
+
+# Installation
+
+## Chargement des packages
+
+```{r}
+library(sf)
+library(tidyverse)
+library(here)
+```
+
+## Chargement des données
+
+```{r}
+load(here("Data/clean_data", "aspe_clean_data.rda"))
+load(here("Data/clean_data", "hydrobio_clean_data.rda"))
+mes_stations<- readRDS(here("Data/clean_data", "mes_stations_sans_RHP.rds")) 
+BDD_info_stations<- readRDS(here("Data/clean_data","BDD_info_stations.rds")) 
+```
+
+# Select ion 1: en fonction de la distance station_aspe - station_hydrobio
+
+Les stations d'hydrobiologie et aspe sont échantillonnées de façon indépendantes, par des opérateurs différents et à des moments différents. Ainsi au sein d'une même station, les points de prélèvements peuvent être espacés de plusieurs kilomètres. Or on ne peut pas comparer des indices alors qu'ils ne proviennent pas de la même zone échantillonnée. Il est donc nécessaire de définir la distance maximale acceptée entre deux points d'une même station.
+
+Pour cela, nous allons calculer les distances entre les points échantillonnés pour les réseaux hydrobio et ceux échantillonnés pour les réseaux piscicoles.
+
+## Arrangement des données
+
+```{r}
+stations_aspe <- aspe_indices %>%
+  filter(sta_code_sandre %in% mes_stations) %>%
+  select(sta_code_sandre,
+         sta_libelle_sandre,
+         sta_coordonnees_x,
+         sta_coordonnees_y,
+         pop_coordonnees_x,
+         pop_coordonnees_y) %>%
+  st_as_sf(
+    coords = c("pop_coordonnees_x", "pop_coordonnees_y"),
+    crs = 2154,
+    remove = FALSE
+  ) %>%  # on transforme les coordonnées des stations en objet sf en gardant les colonnes de coordonnées d'origines
+  unique() %>%
+  rename(
+    code_station = sta_code_sandre,
+    libelle_station = sta_libelle_sandre,
+    coordonnee_x = sta_coordonnees_x,
+    coordonnee_y = sta_coordonnees_y
+  ) %>%
+  mutate(source = "aspe",
+         code_support="4")
+
+stations_hydrobio <- hydrobio_stations_indices %>%
+  filter(code_station_hydrobio %in% mes_stations,
+         !(code_support=="4")) %>%
+  select(
+    code_station_hydrobio,
+    libelle_station_hydrobio,
+    coordonnee_x,
+    coordonnee_y,
+    code_support,
+    coord_point_x_L93,
+    coord_point_y_L93
+  ) %>%
+  mutate(source = "hydrobio",
+         coord_point_x_L93=as.numeric(coord_point_x_L93),
+         coord_point_y_L93= as.numeric(coord_point_y_L93)) %>% 
+  distinct() %>%
+  filter(!is.na(coord_point_x_L93), !is.na(coord_point_y_L93)) %>% 
+  rename(code_station = code_station_hydrobio, 
+         libelle_station = libelle_station_hydrobio,
+         pop_coordonnees_x = coord_point_x_L93,
+         pop_coordonnees_y = coord_point_y_L93) %>%
+  st_as_sf(
+    coords = c("pop_coordonnees_x", "pop_coordonnees_y"),
+    crs = 2154,
+    remove = FALSE
+  ) 
+```
+
+## Jointure
+
+On créé un tableau contenant les géométries des points de prélèvements hydrobio et poisson.
+
+```{r}
+stations <- stations_aspe %>% 
+  bind_rows(stations_hydrobio) 
+```
+
+## Réarrangement de la nouvelle table
+
+```{r}
+#On convertit la géométrie active en colonne normale
+stations_df <- stations %>%
+  mutate(geometry_col = geometry) %>%  # copie de la géométrie
+  st_drop_geometry()                   # on enlève la géométrie active
+
+#Pivot : chaque support devient une colonne de géométrie
+stations_wide <- stations_df %>%
+  select(code_station, libelle_station, code_support, geometry_col) %>%
+  pivot_wider(
+    names_from = code_support,
+    values_from = geometry_col,
+    names_prefix = "geom_"
+  )
+
+#On reconstruit les colonnes géométriques en sfc
+stations_wide <- stations_wide %>%
+  mutate(
+    geom_4  = st_sfc(purrr::map(geom_4,  ~ .x[[1]]),  crs = st_crs(stations)),
+    geom_10 = st_sfc(purrr::map(geom_10, ~ .x[[1]]), crs = st_crs(stations)),
+    geom_13 = st_sfc(purrr::map(geom_13, ~ .x[[1]]), crs = st_crs(stations)),
+    geom_27 = st_sfc(purrr::map(geom_27, ~ .x[[1]]), crs = st_crs(stations))
+  )
+
+
+#Créer de nouvelle svariables contenant la distance entre les coordonnées du point poisson et celles des points hydrobio pour chaque station.
+distances_pop <- stations_wide %>%
+  mutate(
+    dist_4_10 = map2_dbl(geom_4, geom_10, ~ round(as.numeric(st_distance(.x, .y)) / 1000, 3)),
+    dist_4_13 = map2_dbl(geom_4, geom_13, ~ round(as.numeric(st_distance(.x, .y)) / 1000, 3)),
+    dist_4_27 = map2_dbl(geom_4, geom_27, ~ round(as.numeric(st_distance(.x, .y)) / 1000, 3))
+  )
+```
+
+## Filtrer les stations en fonction de la distance maximale acceptée
+
+```{r}
+# définir notre paramètre de distance
+distance_max_km <- 5
+
+distances_filtrees <- distances_pop %>%
+  filter(
+    dist_4_10 <= distance_max_km &
+    dist_4_13 <= distance_max_km &
+    dist_4_27 <= distance_max_km
+  )
+
+#Récupérer les codes des stations respectant les critères de distance 
+selection_station_distance<- distances_filtrees$code_station
+```
+
+# Sélection 2: en fonction du nombre d’occurrences - qualifications non définissable et correcte
+
+## Chargement des données
+
+```{r}
+BDD_indices <- readRDS(here("Data/clean_data", "BDD_indices.rds"))
+min_occurrence <- 4
+```
+
+## Chargement des fonctions
+
+```{r}
+source(here::here("R","fun_compte_indices.R"))
+```
+
+## Préparation des données
+
+```{r}
+#Compter le nombre de valeurs de nos indices pour chaque station
+nb_indices_indef <- BDD_indices %>%
+  st_drop_geometry() %>%
+  filter(code_station %in% selection_station_distance) %>%
+  count_index(code_station, libelle_station, code_indice)
+```
+
+```{r}
+# Filtrer en fonction du critère d’occurrence minimale
+#On veut les stations qui ont obligatoirement au moins 4 valeurs d'IPR et au moins 4 valeurs pour 2 des trois indices d'hydrobiologie
+selection_stations_indef <- nb_indices_indef %>%
+  filter(
+    n_7036 >= min_occurrence, 
+    rowSums(across(c(n_2928, n_5856, n_7613), 
+                   ~ .x >= min_occurrence)) >= 2  ) # filtre les stations qui ont au moins 2 indices hydrobio avec 4 valeurs
+```
+
+Pour 4 occurrences min et les données correctes + non définissables avec distance max= 5km, on a 77 stations
+
+Enfin, pour certaines stations échantillonnées l'IPR n'est pas applicable, nous allons donc créer un objet contenant les codes de ces stations afin de les retirer du jeux de données
+```{r}
+IPR_non_applicable <- c("03254770", "03255580", "03254370","03272685","03217400", "03205000", "03174000","03217000","03216000") 
+
+selection_stations_indef <- selection_stations_indef %>% 
+  filter(!code_station %in% IPR_non_applicable)
+```
+
+# Récupérer les listes de stations remplissant les critères
+
+```{r}
+liste_stations_retenues<- selection_stations_indef$code_station
+
+info_stations_etudiees <- BDD_info_stations %>% 
+  filter(sta_code_sandre %in% liste_stations_retenues)
+
+#Sauvegarder la liste
+saveRDS(liste_stations_retenues, here("Data/clean_data", "liste_stations_retenues.rds"))
+saveRDS(IPR_non_applicable, here("Data/clean_data", "liste_sta_IPR_non_applicable.rds"))
+write.table(x = info_stations_etudiees, file = '../Output/stations_etude.csv', sep = ';', row.names = FALSE)
+```

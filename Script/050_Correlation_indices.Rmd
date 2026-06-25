@@ -1,0 +1,359 @@
+---
+title: "Analyse des correlations entre les métriques"
+author: "Julia"
+date: "2026-03-30"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Installation
+
+## Chargement des packages
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(here)
+library(FactoMineR)
+library(factoextra)
+library(ggrepel)
+library(PerformanceAnalytics)
+library(sf)
+```
+
+# Correlations entre pentes
+## Récupérer les fichiers contenant les pentes et faire une jointure
+```{r}
+fichiers <- list.files(
+  path = "Data/clean_data/Models",         
+  pattern = "^pentes_LMM.*\\.rds$",
+  full.names = TRUE
+)
+
+liste_tables <- lapply(fichiers, readRDS)
+
+pentes_LMM <- bind_rows(liste_tables) %>% 
+  mutate(libelle_indice= case_when(
+      libelle_indice=="IBD" ~"pente_IBD",
+      libelle_indice=="IBMR" ~"pente_IBMR",
+      libelle_indice=="I2M2" ~"pente_I2M2",
+      libelle_indice=="IPR" ~"pente_IPR",
+      TRUE~NA
+    ))
+```
+
+## RRP
+```{r}
+pentes_LMM_RRP<- pentes_LMM %>% 
+  pivot_wider(
+    values_from= pente,
+    names_from = libelle_indice) %>% 
+  filter(reseaux=="RRP") %>% 
+  dplyr::select(-code_station,-reseaux, -libelle_station, -code_departement)
+```
+
+### Matrice de corrélations 
+
+```{r}
+lapply(pentes_LMM_RRP, shapiro.test)
+```
+La normalité est respectée pour toutes les variables.
+
+```{r}
+png("Output/7_Correlations/Pentes/corplot_pentes_RRP_pearson.png", width = 2000, height = 2000,res = 300)
+par(mar = c(4, 4, 6, 2))  # augmente la marge du haut
+
+chart.Correlation(
+  pentes_LMM_RRP,
+  histogram = TRUE,
+  method = "pearson",
+  pch = 19,
+  main = "" 
+)
+
+title("Matrice de corrélation de Pearson entre les pentes des indices issues des LMM,\n pour les stations RRP",
+  line = 4, cex.main = 0.9, font.main = 2)
+
+mtext("a)", side = 3, line = 1, adj = 0.02, cex = 1, font = 2)
+dev.off()
+```
+
+### ACP
+
+```{r}
+pentes_LMM_RRP_ACP<- pentes_LMM %>% 
+  pivot_wider(
+    values_from= pente,
+    names_from = libelle_indice) %>% 
+  filter(reseaux=="RRP") %>% 
+  dplyr::select(-reseaux, -code_departement)
+```
+
+```{r}
+# ACP sur les pentes (sans la colonne Station)
+res_pca_RRP <- PCA(pentes_LMM_RRP_ACP[, -c(1, 2)], scale.unit = TRUE, graph = FALSE)
+
+# Graphique des indices
+png("Output/7_Correlations/Pentes/ACP_indices_RRP.png",
+    width = 700,
+    height = 700)
+fviz_pca_var(res_pca_RRP, 
+             col.var = "cos2", #Les variables sont colorées selon leur qualité de représentation sur le plan factoriel. 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE) +#Eviter le chevauchement des labels
+  ggtitle("Résultat de l'ACP sur les pentes par indices des stations RRP")
+dev.off()
+
+# graphique avec indices et noms stations
+png("Output/7_Correlations/Pentes/ACP_pentes_RRP.png",
+    width = 5000,
+    height = 3300,
+    res=500)
+fviz_pca_biplot(
+  res_pca_RRP,
+  label = "var",
+  col.var = "cos2",
+  gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+  repel = TRUE,
+  arrow.size = 1.5,
+  labelsize = 5
+) +
+  geom_text_repel(
+    aes(
+      x = res_pca_RRP$ind$coord[, 1],
+      y = res_pca_RRP$ind$coord[, 2],
+      label = str_wrap(pentes_LMM_RRP_ACP$libelle_station, 20)
+    ),
+    size = 3,
+    segment.color = "grey30",
+    # ← couleur du trait
+    segment.size = 0.6,
+    # ← épaisseur du trait
+    min.segment.length = 0
+  ) +
+  labs(
+    title="Biplot de l'ACP sur les pentes, présentant la relation entre les variables et la position des stations RRP",
+    subtitle="a)")+
+  theme(
+    plot.title = element_text(size = 12, face = "bold"),
+    plot.subtitle = element_text(size = 14, face = "bold", hjust = 0),
+    text = element_text(face = "bold")   
+  )
+dev.off()
+```
+
+
+Afficher le résumé de l'ACP
+```{r}
+summary(res_pca_RRP)
+```
+
+
+Afficher la matrice de corrélation dimension vs indices et indice vs indice
+```{r}
+var <- factoextra::get_pca_var(res_pca_RRP)
+
+# dimensions vs indices
+var$cor
+
+# indices vs indices
+cor(pentes_LMM_RRP)
+```
+
+
+
+## RCS
+```{r}
+pentes_LMM_RCS<- pentes_LMM %>% 
+  pivot_wider(
+    values_from= pente,
+    names_from = libelle_indice) %>% 
+  filter(reseaux=="RCS") %>% 
+  dplyr::select(-code_station,-reseaux, -code_departement, -libelle_station)
+```
+
+### Mattrice de corélation
+```{r}
+lapply(pentes_LMM_RCS, shapiro.test)
+```
+La normalité est respectée pour toutes les variables.
+
+```{r}
+png("Output/7_Correlations/Pentes/corplot_pentes_RCS_pearson.png",  width = 2000, height = 2000,res = 300)
+par(mar = c(4, 4, 6, 2))  # augmente la marge du haut
+
+chart.Correlation(
+  pentes_LMM_RCS,
+  histogram = TRUE,
+  method = "pearson",
+  pch =19,
+  main=""
+)
+title("Matrice de corrélation de Pearson entre les pentes des indices issues de LMM,\n pour les stations RCS",
+      line=4,cex.main = 0.9, font.main = 2)
+
+mtext("b)", side = 3, line = 1, adj = 0.02, cex = 1, font = 2)
+dev.off()
+```
+
+
+### ACP
+
+```{r}
+pentes_LMM_RCS_ACP<- pentes_LMM %>% 
+  pivot_wider(
+    values_from= pente,
+    names_from = libelle_indice) %>% 
+  filter(reseaux=="RCS") %>% 
+  dplyr::select(-reseaux, -code_departement )
+```
+
+```{r}
+# ACP sur les pentes (sans la colonne Station)
+res_pca_RCS <- PCA(pentes_LMM_RCS_ACP[, -c(1,2)], scale.unit = TRUE, graph = FALSE)
+
+# Graphique des indices
+png("Output/7_Correlations/Pentes/ACP_indices_RCS.png",
+    width = 700,
+    height = 700)
+fviz_pca_var(res_pca_RCS, 
+             col.var = "cos2", #Les variables sont colorées selon leur qualité de représentation sur le plan factoriel. 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE) +#Eviter le chevauchement des labels
+  ggtitle("Résultat de l'ACP sur les pentes par indices des stations RCS")
+dev.off()
+
+png("Output/7_Correlations/Pentes/ACP_pentes_RCS.png",
+    width = 5000,
+    height = 3300,
+    res=500)
+fviz_pca_biplot(
+  res_pca_RCS,
+  label = "var",
+  col.var = "cos2",
+  gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+  repel = TRUE,
+  arrow.size = 1.5,
+  labelsize = 5
+) +
+  geom_text_repel(
+    aes(
+      x = res_pca_RCS$ind$coord[, 1],
+      y = res_pca_RCS$ind$coord[, 2],
+      label = str_wrap(pentes_LMM_RCS_ACP$libelle_station, 20)
+    ),
+    size = 2,
+    segment.color = "grey30",
+    # ← couleur du trait
+    segment.size = 0.6,
+    # ← épaisseur du trait
+    min.segment.length = 0
+  ) +
+  labs(
+    title="Biplot de l'ACP sur les pentes, présentant la relation entre les variables et la position des stations RCS",
+    subtitle="b)")+
+  theme(
+    plot.title = element_text(size = 12, face = "bold"),
+    plot.subtitle = element_text(size = 14, face = "bold", hjust = 0),
+    text = element_text(face = "bold")   
+  )
+dev.off()
+```
+
+
+Afficher le résumé de l'ACP
+```{r}
+summary(res_pca_RCS)
+```
+
+
+
+## Figure ACP commune pour les deux réseaux
+
+
+```{r}
+pentes_LMM_ACP<- pentes_LMM %>% 
+  pivot_wider(
+    values_from= pente,
+    names_from = libelle_indice) %>% 
+  dplyr::select(-code_departement)
+```
+
+```{r}
+# ACP sur les pentes (sans la colonne Station)
+res_pca <- PCA(pentes_LMM_ACP[, -c(1, 2,3)], scale.unit = TRUE, graph = FALSE)
+
+# Graphique des indices
+png("Output/7_Correlations/Pentes/ACP_indices.png",
+    width = 700,
+    height = 700)
+fviz_pca_var(res_pca, 
+             col.var = "cos2", #Les variables sont colorées selon leur qualité de représentation sur le plan factoriel. 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE) +#Eviter le chevauchement des labels
+  ggtitle("Résultat de l'ACP sur les pentes par indices des stations RRP")
+dev.off()
+
+# graphique avec indices et noms stations
+png("Output/7_Correlations/Pentes/ACP_pentes.png",
+    width = 1000,
+    height = 700)
+fviz_pca_biplot(
+  res_pca,
+  label = "var",
+  col.var = "cos2",
+  gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+  repel = TRUE,
+  arrow.size = 1.5,
+  labelsize = 6
+) +
+  geom_point(
+    data = as.data.frame(res_pca$ind$coord) %>%
+      mutate(reseaux = pentes_LMM_ACP$reseaux),
+    aes(x = Dim.1, y = Dim.2, fill = reseaux),
+    shape=21,
+    color=NULL,
+    size = 3,
+  ) +
+   scale_fill_manual(values = c("RRP" = "#2D0084", "RCS" = "#CD6839"))+
+  geom_text_repel(
+    data = as.data.frame(res_pca$ind$coord) %>%
+      mutate(
+        libelle_station = pentes_LMM_ACP$libelle_station,
+        reseaux = pentes_LMM_ACP$reseaux
+      ),
+    aes(
+      x = Dim.1,
+      y = Dim.2,
+      label = str_wrap(libelle_station, 20), 
+      fill = reseaux
+    ),
+    size = 3.5,
+    segment.color = "grey30",
+    segment.size = 0.6,
+    min.segment.length = 0
+  ) +
+  theme(
+    text = element_text(face = "bold")
+  ) +
+  ggtitle(
+    "Biplot de l'ACP, présentant la relation entre les variables et la position des stations"
+  )
+
+dev.off()
+```
+
+
+Afficher le résumé de l'ACP
+```{r}
+summary(res_pca_RRP)
+```
+
+```{r}
+cor(pentes_LMM_RCS)
+```
+

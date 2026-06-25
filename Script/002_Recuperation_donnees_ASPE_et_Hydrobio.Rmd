@@ -1,0 +1,129 @@
+---
+title: "Récupération des données à partir des bases de données Aspe et Naïades"
+author: "Julia"
+date: "2026-01-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Ce script permet de récupérer les données Aspe depuis la base de données de l'IDG et les données Hydrobio depuis l'API Hubeau.
+
+# Charger les packages
+
+```{r message=FALSE, warning=FALSE}
+library(aspe)
+library(here)
+library(hubeau) #fournit les fonctions pour appeler l'API
+library(tidyverse) #contient ggplot2 dplyr, tidyr, readr, purrr, tibble, stringr, forcats
+library(sf) #permet de manipuler des données spatiales
+library(lubridate) #permet de manipuler les formats de dates
+```
+
+# Récupérer les données Aspe
+
+## 1. Importer la base de données de l'IDG (Infrastructure de Données Géographiques)
+
+```{r}
+# connexion à l'IDG
+aspe_db <- imp_connecter_aspe_idg()
+```
+
+```{r}
+# importation des tables de la base aspe 
+imp_importer_aspe_idg(aspe_db)
+```
+
+## 2. Sauvegarder les données au format .Rdata dans notre répertoire
+
+```{r}
+# Sauvegarder le résutat au format .Rdata
+export_tables_rdata( "../Data/raw_data")
+```
+
+# Récupérer les données Hydrobio
+
+L'API hydrobiologie développée par Hub'Eau donne accès à trois tables provenant de la base de données NAIADES:
+
+-   stations
+
+-   indices
+
+-   taxons
+
+Pour récupérer les données, nous allons utiliser des fonctions définies dans le fichier "fun_get_data_hydrobio.R" qui se trouve dans notre répertoire de travail.
+
+## Installation
+
+### Chargement des fonctions
+
+```{r}
+source(here::here("R","fun_get_data_hydrobio.R"))
+```
+
+### Chargement des données
+
+```{r}
+mes_stations_peche<- readRDS(here("Data/clean_data", 
+                                  "mes_stations_peche.rds")) #contient les 92 stations qui nous intéressent
+```
+
+### Définition des paramètres nécessaires au fonctionnement des fonctions
+
+```{r message=FALSE}
+code_departement <- c("14", "27", "28", "76", "61", "50") #Départements qui nous intéressent
+
+code_indice <- c(`I2M2` = 7613,
+                 `IBMR` = 2928,
+                 `IBD` = 5856) 
+
+code_eqb <- c(
+              `Diatomées` = 10, 
+              `Macroinvertébrés` = 13,
+              `Macrophytes` = 27 ) #Un vecteur nommé de codes d'éléments de qualité biologique.
+
+annee_depart <- 2007
+```
+
+## 1. Télécharger les données des stations hydrobiologiques
+
+```{r}
+stations_hydrobio <- telecharger_stations(code_departement, mes_stations_peche)
+```
+
+## 2. Télécharger les indices des stations hydrobiologiques
+
+A présent, nous allons accéder à la table "indices" pour récupérer les indices disponibles pour chaque stations. On utilise les même paramètres définis précédemment.
+
+Le téléchargement à été fait en deux temps. Dans un premier temps les données relatives aux indices I2M2, IBD et IBMR ont été stockées dans le dataframe indices_hydrobio.
+
+```{r}
+indices_hydrobio <- telecharger_indices(code_departement,
+                                        mes_stations_peche,
+                                        liste_indice = code_indice,
+                                        annee_depart) %>%
+  group_by(libelle_indice, annee, code_qualification)
+```
+
+
+## 3. Télécharger les listes faunistiques et floristiques
+
+Le téléchargement prend du temps car il y a énormément de données. Il est important de bien choisir l'année de départ pour limiter le temps de téléchargement.
+
+```{r}
+taxons_hydrobio <- telecharger_listes( code_departement, 
+                                       mes_stations_peche, 
+                                       code_eqb, 
+                                       annee_depart)
+```
+
+## Sauvegarder les données au format Rdata dans notre répertoire
+
+```{r}
+save(stations_hydrobio,
+     indices_hydrobio,
+     taxons_hydrobio,
+     file = "../Data/raw_data/hydrobio_data.rda")
+```

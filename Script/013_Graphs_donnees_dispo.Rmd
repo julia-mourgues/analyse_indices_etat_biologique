@@ -1,0 +1,61 @@
+---
+title: "Représentations graphiques permettant de visualiser la disponibilité des donnees"
+author: "Julia"
+date: "2026-01-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Ce script permet de générer les représentations graphiques des disponibilités en indices par années et par stations. On prend en compte les données correctes et les données non définissables.
+
+# Installation
+
+## Chargement des packages
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(here)
+library(paletteer)
+library(ggtext)
+```
+
+## Chargement des données
+
+```{r}
+load(here("Data/clean_data", "aspe_clean_data.rda"))
+load(here("Data/clean_data", "hydrobio_clean_data.rda"))
+```
+
+## Chargement des fonctions
+
+```{r}
+source(here("R","fun_graph_dispo_donnees.R"))
+```
+
+## Définir les paramètres
+Nous avons besoin d'un objet contenant les codes des département. Afin d'utiliser tous les codes présents dans nos données sans les entrer à la main nous créons deux objets intermédiaires que nous allons unir après.
+```{r}
+#Objets intermédiaires contenant les codes présents dans les deux tables
+dept <- unique(aspe_indices$dept)
+dept2 <- unique(hydrobio_stations_indices$code_departement)
+
+#Objets final contenant les différents codes départements
+liste_departements <- union(dept, dept2)
+```
+
+
+# Générer les graphiques
+
+```{r}
+#Utilisation du package {purr} pour appliquer notre fonction à la liste de départements
+walk( liste_departements, 
+      ~dispo_indices( data_aspe = aspe_indices, 
+                       data_hydrobio = hydrobio_stations_indices, 
+                       col_libelle_qualification= "libelle_qualification",
+                       departement = .x, 
+                       nom_fichier="indef_correcte",
+                       repertoire = "../Output/0_Disponibilite_donnees" ) )
+```

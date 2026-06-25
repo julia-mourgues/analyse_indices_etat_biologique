@@ -1,0 +1,460 @@
+---
+title: "Récupération des algorithmes SEEE pour calculer les métriques"
+author: "Julia"
+date: "2026-03-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Ce script permet de récupérer les algorithmes du SEEE et de calculer les indices d'état biologiques ainsi que leurs métriques.
+
+# Installation
+##Chargement des packages
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(SEEEapi)
+library(sf) #permet de manipuler des données spatiales
+library(lubridate)
+library(here)
+```
+
+## Chargement des données
+```{r}
+load(here("Data/raw_data", "hydrobio_data.rda"))
+Base_station_active <- readRDS(here("Data/clean_data", "Base_station_active_clean.rds")) #contient des informations supplémentaires du labo Hydrobio
+```
+
+# Récupérer les algorithmes SEEE
+```{r}
+# SEEEapi::get_algo(
+#     indic = "EBio_CE_2018",
+#     version = "1.0.1",
+#     dir_algo = "../R/algo_seee"
+#   )
+# 
+# SEEEapi::get_algo(
+#     indic = "IBMR",
+#     version = "1.2.1",
+#     dir_algo = "../R/algo_seee"
+#   )
+# 
+# SEEEapi::get_algo(
+#     indic = "I2M2",
+#     version = "1.0.6",
+#     dir_algo = "../R/algo_seee"
+#   )
+# 
+# SEEEapi::get_algo(
+#     indic = "IBD",
+#     version = "1.3.0",
+#     dir_algo = "../R/algo_seee"
+#   )
+# 
+# SEEEapi::get_algo(
+#     indic = "IPR",
+#     version = "1.0.3",
+#     dir_algo = "../R/algo_seee"
+#   )
+```
+
+# Formatage des données pour le SEEE
+
+## 1.Données stations
+Le SEEE requiert les informations suivantes pour chaque station :
+ - CODE_STATION : code de la station
+ - TYPO_NATIONALE : type de cours d'eau
+ - TG_BV : présence de très grands bassins versants (>10 000 km²)
+ - PERIODE_DEBUT et PERIODE_FIN : années de début et fin pour le calcul
+```{r}
+stations_clean <- stations_hydrobio %>%
+  dplyr::select(
+    -uri_station_hydrobio,
+    -code_masse_eau,
+    -libelle_masse_eau,
+    -geometry
+  ) %>% 
+  left_join(Base_station_active %>% dplyr::select(CD_STATION, Typologie),
+            by=c("code_station_hydrobio"="CD_STATION"))
+```
+
+```{r}
+stations_seee <- stations_clean %>% 
+  st_drop_geometry() %>% 
+  dplyr::transmute(
+    CODE_STATION = code_station_hydrobio,
+    TYPO_NATIONALE = Typologie,
+    # Détection des très grands cours d'eau (préfixe TG dans la typologie)
+    # Cette information est nécessaire pour le calcul de l'IBD
+    TG_BV = Typologie %>% 
+      stringr::str_detect(pattern = "TG") %>%
+      stringr::str_replace_all(pattern = 'TRUE', replacement = "OUI") %>% 
+      stringr::str_replace_all(pattern = 'FALSE', replacement = "NON"),
+    PERIODE_DEBUT = lubridate::year(date_premier_prelevement),
+    PERIODE_FIN = lubridate::year(date_dernier_prelevement)
+  ) %>%
+  # Suppression des stations sans typologie (pas de calcul possible)
+  dplyr::filter(!is.na(TYPO_NATIONALE)) %>%
+  # Création d'une ligne par année de données
+  dplyr::rowwise() %>%
+  dplyr::mutate(ANNEE = list(seq(PERIODE_DEBUT, PERIODE_FIN))) %>%
+  dplyr::ungroup() %>%
+  tidyr::unnest(ANNEE) %>%
+  dplyr::select(CODE_STATION, TYPO_NATIONALE, TG_BV, PERIODE_DEBUT = ANNEE, PERIODE_FIN = ANNEE)
+```
+
+## 2.Données indices
+
+Les données sont caractérisées par un niveau de conformité. Ici nous choisissons de travailler sur les données "correctes" et "non définissables", qui correspondent aux code "1" et "0".
+
+```{r}
+indices_clean <- indices_hydrobio %>%
+  filter(code_qualification %in% c("0", "1"))  %>%
+  mutate(libelle_indice=case_when(
+    str_detect(libelle_indice,"Macrophytique")~"IBMR",
+    str_detect(libelle_indice,"IBD") ~"IBD",
+    str_detect(libelle_indice, "I2M2") ~"I2M2",
+    TRUE ~ NA_character_
+  )) %>% 
+  ungroup()
+```
+
+Le SEEE requiert un format spécifique pour les données d'entrée :
+- CODE_OPERATION : identifiant unique du prélèvement
+- CODE_STATION : code de la station
+- DATE : date du prélèvement au format JJ/MM/AAAA
+- CODE_PAR : code de l'indice
+- LIB_PAR : libellé de l'indice
+- RESULTAT : valeur de l'indice
+```{r}
+indices_seee <- indices_clean %>% 
+  dplyr::transmute(
+    CODE_OPERATION = code_prelevement,
+    CODE_STATION = code_station_hydrobio,
+    DATE = date_prelevement %>% 
+      format(format = "%d/%m/%Y"),
+    CODE_PAR = code_indice,
+    LIB_PAR = libelle_indice,
+    RESULTAT = resultat_indice
+  ) %>% 
+  dplyr::bind_rows(
+    indices_clean %>% 
+      dplyr::filter(code_indice == 7036) %>% 
+      dplyr::transmute(
+        CODE_OPERATION = code_prelevement,
+        CODE_STATION = code_station_hydrobio,
+        DATE = date_prelevement %>% 
+          format(format = "%d/%m/%Y")) %>% 
+      dplyr::distinct() %>% 
+      dplyr::mutate(
+        CODE_PAR = "NA",
+        LIB_PAR = "ALT",
+        RESULTAT = 200
+      )) %>% 
+  dplyr::mutate(
+    LIB_PAR = ifelse(CODE_PAR == 7036, "IPR", LIB_PAR))
+```
+
+# Calcul de l'état biologique avec la méthode 2018
+
+Le calcul de l'état biologique se fait en plusieurs étapes :
+ 1. Calcul des EQR (Ecological Quality Ratio) pour chaque indice
+ 2. Attribution des classes de qualité selon les seuils spécifiques à chaque type de cours d'eau
+Les classes sont : Très bon, Bon, Moyen, Médiocre, Mauvais
+
+
+## Calcul des résultats de chaque indice
+```{r}
+as.tbl <- function(x) tibble::as_tibble(x)
+```
+
+
+```{r}
+etat_bio <- (SEEEapi::calc_indic(
+    indic = "EBio_CE_2018",
+    version = "1.0.1",
+    locally = TRUE,
+    dir_algo = "../R/algo_seee",  
+    data = list(
+      stations_seee,
+      indices_seee %>%
+        dplyr::filter(CODE_PAR == 5856),
+      indices_seee  %>% 
+        dplyr::filter(CODE_PAR == 2928),
+      indices_seee %>%
+        dplyr::filter(CODE_PAR == 7613),
+      indices_seee %>%
+        dplyr::filter(CODE_PAR  %in% c("NA", "7036") ) %>%
+        dplyr::arrange(CODE_STATION, CODE_OPERATION, CODE_PAR)
+    )
+   )$result)%>%
+  dplyr::filter(!is.na(RESULTAT)) %>%
+  dplyr::select(
+    code_station_hydrobio = CODE_STATION,
+    annee = PERIODE_DEBUT,
+    code_indice = CODE_PAR,
+    libelle_indice = LIB_PAR,
+    resultat_indice_SEEE = RESULTAT,
+    eqr_indice = EQR,
+    classe_indice_SEEE = CLASSE
+  ) %>%
+  dplyr::mutate(
+    dplyr::across(c(resultat_indice_SEEE, eqr_indice, annee), as.numeric)
+  )
+```
+
+```{r}
+etat_bio <- etat_bio %>%
+  mutate(libelle_indice=case_when(
+    str_detect(libelle_indice,"IBMR")~"IBMR",
+    str_detect(libelle_indice,"Diat") ~"IBD",
+    str_detect(libelle_indice, "Invert") ~"I2M2",
+    TRUE ~ NA_character_
+  ),
+  eqr_indice = pmin(eqr_indice, 1)) %>% 
+  ungroup()
+```
+
+
+## Extraction des paramètres de classification pour chaque indice
+ Les paramètres sont stockés dans des fichiers CSV dans les dossiers des algorithmes
+ du SEEE. Ils contiennent les valeurs de référence et les seuils de classification
+ pour chaque type de cours d'eau.
+
+### Identification des fichiers de paramètres
+Les fichiers sont stockés dans le dossier de l'algorithme EBio_CE_2018 v1.0.1
+et contiennent les paramètres pour chaque indice (IBD, IBMR, I2M2, IPR)
+```{r}
+fichiers_parametres <- list.files(
+  path = "../R/algo_seee/EBio_CE_2018/1.0.1",
+  pattern = "params",
+  full.names = TRUE
+)
+```
+
+### Extraction des noms des indices à partir des noms de fichiers
+Les noms des indices sont extraits des noms de fichiers en supprimant
+le chemin du dossier et l'extension .csv
+```{r}
+noms_indices_param <- fichiers_parametres %>%
+  stringr::str_remove(
+    pattern = "../R/algo_seee/EBio_CE_201\\d/1.0.1/EBio_CE_201\\d_params_"
+) %>%
+  stringr::str_remove(
+    pattern = ".csv"
+  )
+```
+
+
+### Import et formatage des valeurs seuils pour chaque indice
+Les valeurs seuils sont spécifiques à chaque indice et type de cours d'eau
+Elles permettent de calculer les EQR et d'attribuer les classes de qualité
+Les fichiers CSV utilisent la virgule comme séparateur décimal
+Structure des fichiers :
+- TYPO_NATIONALE : type de cours d'eau
+- TG_BV : présence de très grands bassins versants (>10 000 km²) pour l'IBD
+- REFERENCE : valeur de référence pour le calcul de l'EQR
+- MINIMUM : valeur minimale pour le calcul de l'EQR (IBD uniquement)
+- TRES_BON, BON, MOYEN, MEDIOCRE, MAUVAIS : seuils de classification
+```{r}
+valeurs_seuils <- fichiers_parametres  %>% 
+  purrr::map(
+    function(x) {
+      vroom::vroom(file = x, locale = vroom::locale(decimal_mark = ","))
+    }
+  ) %>%
+  purrr::set_names(noms_indices_param)
+```
+
+
+###Extraction des paramètres nécessaires au calcul des EQR (Ecological Quality Ratio)
+L'EQR est un indicateur normalisé permettant de comparer les résultats entre
+différents types de cours d'eau.
+
+Pour chaque indice, on extrait les paramètres nécessaires au calcul :
+- IBD (code 5856) :
+   * Valeurs de référence et minimales spécifiques à chaque type de cours d'eau
+   * Prise en compte de la présence de très grands bassins versants (>10 000 km²)
+- IBMR (code 2928) :
+   * Valeurs de référence spécifiques à chaque type de cours d'eau
+
+```{r}
+parametres_eqr <- c("IBD", "IBMR") %>%
+  purrr::map(
+    function(i) {
+      if (i == "IBD") {
+        # Pour l'IBD, on prend en compte la présence de très grands bassins versants
+        params <- valeurs_seuils[[i]] %>%
+          dplyr::distinct(TYPO_NATIONALE, TG_BV, REFERENCE, MINIMUM)
+      }
+
+      if (i %in% c("IBG-DCE", "MGCE", "IBMR")) {
+        # Pour les autres indices, seule la typologie et la valeur de référence sont prises en compte
+        params <- valeurs_seuils[[i]] %>%
+          dplyr::distinct(TYPO_NATIONALE, REFERENCE)
+      }
+
+      params
+    }
+  ) %>%
+  # Association des paramètres avec les codes des indices
+  # - 5856 : IBD (Indice Biologique Diatomées)
+  # - 2928 : IBMR (Indice Biologique Macrophytique en Rivière)
+  purrr::set_names(c(5856, 2928))
+```
+
+
+### Transformation des valeurs seuils pour chaque indice
+Les tableaux de seuils sont transformés pour avoir une structure commune :
+ - TYPO_NATIONALE : type de cours d'eau
+ - classe : classe de qualité (TRES_BON, BON, MOYEN, MEDIOCRE, MAUVAIS)
+ - seuil_bas et seuil_haut : bornes de la classe de qualité
+
+Le traitement est différent selon l'indice :
+ - IPR : les seuils sont des valeurs brutes, plus la valeur est élevée,
+         plus la qualité est mauvaise
+ - Autres indices : les seuils sont des EQR, plus la valeur est élevée,
+                   plus la qualité est bonne
+```{r}
+for (x in noms_indices_param) {
+  print(x)
+  if (x == "IPR") {
+    # Pour l'IPR, les seuils sont des valeurs brutes
+    # Les seuils sont différents selon l'altitude mais seuls les seuils
+    # de basse altitude sont utilisés en Île-de-France
+    valeurs_seuils$IPR <- valeurs_seuils$IPR %>%
+      dplyr::mutate(
+        # Utilisation des seuils de basse altitude si les seuils
+        # ne sont pas spécifiés pour le type de cours d'eau
+        bon = ifelse(is.na(BON), BASSE_ALTITUDE, BON)
+      ) %>%
+      dplyr::select(TYPO_NATIONALE, TRES_BON, BON = bon, MOYEN, MEDIOCRE, MAUVAIS) %>%
+      # Transformation en format long pour avoir une ligne par classe
+      tidyr::pivot_longer(
+        cols = -TYPO_NATIONALE,
+        names_to = "classe", values_to = "seuil_haut"
+      ) %>%
+      # Complète les bornes basses des classes
+      dplyr::mutate(
+        seuil_bas = ifelse(classe == "TRES_BON", 0, dplyr::lag(seuil_haut))
+      )
+  } else {
+    if (x == "IBD") {
+      # Pour l'IBD, les seuils sont des EQR et dépendent de la présence
+      # de très grands bassins versants
+      valeurs_seuils$IBD <- valeurs_seuils$IBD %>%
+        dplyr::select(TYPO_NATIONALE, TG_BV, TRES_BON, BON, MOYEN, MEDIOCRE, MAUVAIS) %>%
+        # Transformation en format long pour avoir une ligne par classe
+        tidyr::pivot_longer(
+          cols = -c(TYPO_NATIONALE, TG_BV),
+          names_to = "classe", values_to = "seuil_bas"
+        ) %>%
+        # Complète les bornes hautes des classes
+        dplyr::mutate(
+          seuil_haut = ifelse(classe == "TRES_BON", 1, dplyr::lag(seuil_bas))
+        )
+    } else {
+      # Pour les autres indices (IBMR, IBG-DCE, MGCE), les seuils sont des EQR
+      # et ne dépendent que du type de cours d'eau
+      valeurs_seuils[[x]] <- valeurs_seuils[[x]] %>%
+        dplyr::select(TYPO_NATIONALE, TRES_BON, BON, MOYEN, MEDIOCRE, MAUVAIS) %>%
+        # Transformation en format long pour avoir une ligne par classe
+        tidyr::pivot_longer(
+          cols = -c(TYPO_NATIONALE),
+          names_to = "classe", values_to = "seuil_bas"
+        ) %>%
+        # Complète les bornes hautes des classes
+        dplyr::mutate(
+          seuil_haut = ifelse(classe == "TRES_BON", 1, dplyr::lag(seuil_bas))
+        )
+    }
+  }
+}
+
+```
+
+## Association des valeurs seuils avec les stations
+Pour chaque station, on associe les valeurs seuils correspondant à son type
+de cours d'eau et à la présence de très grands bassins versants
+
+### Traitement spécifique pour l'IBD qui dépend de la présence de très grands
+bassins versants (TG_BV)
+
+```{r}
+valeurs_seuils_stations <- stations_seee %>%
+  sf::st_drop_geometry() %>%
+  dplyr::distinct(CODE_STATION, TYPO_NATIONALE, TG_BV) %>%
+  dplyr::mutate(indice = "IBD") %>%
+  dplyr::left_join(
+    valeurs_seuils$IBD,
+    by = c("TYPO_NATIONALE", "TG_BV")
+  )
+```
+
+### Ajout des valeurs seuils pour les autres indices
+Pour les autres indices (IBMR, IBG-DCE, MGCE, IPR), les seuils ne dépendent
+que du type de cours d'eau
+```{r warning=FALSE}
+for (i in noms_indices_param) {
+  if (i != "IBD") {
+    valeurs_seuils_stations <- dplyr::bind_rows(
+      valeurs_seuils_stations,
+      stations_seee %>%
+        sf::st_drop_geometry() %>%
+        dplyr::distinct(CODE_STATION, TYPO_NATIONALE, TG_BV) %>%
+        dplyr::mutate(indice = i) %>%
+        dplyr::left_join(
+          valeurs_seuils[[i]],
+          by = c("TYPO_NATIONALE")
+        )
+    )
+  }
+}
+```
+
+### Correction des seuils hauts
+Si le seuil bas n'est pas disponible (NA), le seuil haut est également mis à NA
+```{r}
+valeurs_seuils_stations <- valeurs_seuils_stations %>%
+  dplyr::mutate(
+    seuil_haut = ifelse(is.na(seuil_bas), NA, seuil_haut)
+  )
+```
+
+# Enregistrer les données
+
+```{r}
+valeurs_seuils_indices <- valeurs_seuils_stations %>% 
+  filter(!indice %in% c("MGCE","IBG-DCE")) %>% 
+  mutate( classe= case_when(
+    classe=="BON" ~"Bon",
+    classe=="MAUVAIS" ~"Mauvais",
+    classe=="MEDIOCRE" ~"Médiocre",
+    classe=="MOYEN" ~"Moyen",
+    classe=="TRES_BON" ~"Très bon",
+    TRUE ~ classe
+  ),
+  couleur= case_when(
+    classe== "Très bon" ~ "#2b83ba",
+    classe=="Bon" ~ "lightgreen",
+    classe=="Moyen" ~ "yellow",
+    classe=="Médiocre" ~ "orange",
+    classe=="Mauvais" ~"red",
+    TRUE ~NA_character_
+  )
+  ) %>% 
+  left_join(indices_hydrobio %>%  
+              ungroup() %>% 
+              dplyr::select(code_station_hydrobio, libelle_station_hydrobio) %>% 
+              distinct(code_station_hydrobio, libelle_station_hydrobio),
+            by=c("CODE_STATION"="code_station_hydrobio"))
+```
+
+```{r}
+saveRDS(valeurs_seuils_indices, here("Data/clean_data","valeurs_seuils_indices.rds"))
+saveRDS(etat_bio, here("Data/clean_data","indices_hydrobio_SEEE.rds"))
+```
+
+

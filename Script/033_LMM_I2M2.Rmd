@@ -1,0 +1,917 @@
+---
+title: "023_LMM_IPR"
+author: "Julia"
+date: "2026-02-23"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Script permettant de visualiser l'évolution de l'I2M2 au cours des années à l'échelle de la Normandie
+
+# Installation
+## Chargement des packages
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(here)
+library(lme4)
+library(ggtext)
+library(DHARMa)
+library(MuMIn)
+library(lmerTest)
+library(car)
+```
+
+## Chargement des fonctions
+```{r}
+source(here::here("R", "fun_classe_ecologique.R"))
+```
+
+## Chargement des données
+```{r}
+BDD_indices <- readRDS(here("Data/clean_data", "BDD_indices.rds"))
+mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
+valeurs_seuils <- readRDS(here("Data/clean_data", "valeurs_seuils_indices.rds"))
+```
+
+```{r}
+BDD_I2M2 <- BDD_indices %>% 
+  filter(code_station %in% mes_stations,
+         libelle_indice=="I2M2")
+```
+
+
+# Réseau RRP
+
+## Préparer les données
+```{r}
+BDD_I2M2_RRP <- BDD_I2M2%>% 
+  filter(reseaux=="RRP",
+         annee>=2013)%>% 
+  group_by(code_station) %>%
+  mutate(annee_c = (annee - min(annee) + 1),
+         annee_min = min(annee),
+         julian=lubridate::yday(date_prelevement)) 
+```
+
+## Plot pour vérifier visuelement la normalité
+```{r}
+ggplot(BDD_I2M2_RRP, aes(x=resultat_eqr))+
+  geom_histogram(show.legend = FALSE, color = "black")+
+  theme_bw()+
+  labs(title="données brutes",
+       x="Résultat",
+       y="Nombre")
+
+#Observer distribution des jours julian
+ggplot(BDD_I2M2_RRP, aes(x=julian))+
+  geom_histogram(show.legend = FALSE, color = "black")+
+  theme_bw()+
+  labs(title="distribution jour julian",
+       x="jour julian",
+       y="Nombre")
+```
+
+## LMM sur les données brutes
+
+Hypothèse à tester: l'évolution de la valeur de l'indice dépend des stations 
+
+```{r}
+M_brute_RRP <- lmer(resultat_eqr ~ annee_c + (1 + annee_c | code_station)+ julian +operateur +libelle_typologie + annee_min, data = BDD_I2M2_RRP, REML=FALSE, lmerControl(optimizer = "bobyqa")) 
+
+sim_brute_RRP <- simulateResiduals(M_brute_RRP)
+plot(sim_brute_RRP, main = "DHARMa - M_brute_RRP")
+```
+
+###Tester la multicolinéarité
+```{r}
+vif(M_brute_RRP)
+```
+vif environ = à 1 donc pas de multicolinéarité, modele fiable
+
+
+## Tester toutes les combinaisons de modèles et déterminer les variables ayant un effet significatif
+
+```{r}
+options(na.action = "na.fail")
+dredge_brute_RRP <- dredge(M_brute_RRP)
+
+summary(model.avg(dredge_brute_RRP, subset = delta < 2))
+```
+
+Effet de l'année non significatif
+Effet de julian significatif
+
+## Visualisation du modèle retenu: M_brute_RRP
+
+### Vérifier l'homogénéité des résidus
+```{r}
+# Plotez les valeurs prédites par rapport aux valeurs résiduelles
+par(mar = c(4, 4, 0.5, 0.5))
+plot(resid(M_brute_RRP) ~ fitted(M_brute_RRP), xlab = "Predicted values", ylab = "Normalized residuals")
+abline(h = 0, lty = 2)
+```
+La variance est homogène
+
+
+### Vérifier l'indépendance des résidus
+```{r}
+# Afin de vérifier l'indépendance des résidus du modèle,
+# nous devons tracer les résidus en fonction de chaque
+# covariable du modèle.
+par(mfrow = c(1, 3), mar = c(4, 4, 0.5, 0.5))
+
+plot(resid(M_brute_RRP) ~ BDD_I2M2_RRP$resultat_eqr, xlab = "I2M2", ylab = "Normalized residuals")
+abline(h = 0, lty = 2)
+
+boxplot(resid(M_brute_RRP) ~ annee_c, data = BDD_I2M2_RRP, xlab = "Années",
+    ylab = "Normalized residuals")
+abline(h = 0, lty = 2)
+
+boxplot(resid(M_brute_RRP) ~ code_station, data = BDD_I2M2_RRP, xlab = "stations", ylab = "Normalized residuals")
+abline(h = 0, lty = 2)
+```
+Il semble que l'indépendance des résidus soit vérifiée
+
+
+## Interprétation du modèle
+
+```{r}
+Modele_I2M2_RRP <- lmer(resultat_eqr ~ annee_c + (1 + annee_c | code_station), data = BDD_I2M2_RRP, REML=TRUE,control=lmerControl(optimizer = "bobyqa")) 
+
+# Résumé avec p-values
+summary(Modele_I2M2_RRP)
+
+# Résumé
+coef_table_RRP <- as.data.frame(coef(summary(Modele_I2M2_RRP)))
+names(coef_table_RRP) <- c("Estimate", "Std_Error", "df", "t_value", "p_value")
+
+# Extraire les valeurs
+intercept_est  <- coef_table_RRP["(Intercept)", "Estimate"]
+intercept_p    <- coef_table_RRP["(Intercept)", "p_value"]
+
+annee_est      <- coef_table_RRP["annee_c", "Estimate"]
+annee_p        <- coef_table_RRP["annee_c", "p_value"]
+
+# R²
+r2_vals <- r.squaredGLMM(Modele_I2M2_RRP)
+r2_marg <- r2_vals[1]
+r2_cond <- r2_vals[2]
+
+# Construire un tableau déjà tidy
+donnees_model_I2M2_RRP <- data.frame(
+  libelle_indice = "I2M2",
+  reseaux = "RRP",
+  intercept_estimate = intercept_est,
+  intercept_pvalue = intercept_p,
+  annee_estimate = annee_est,
+  annee_pvalue = annee_p,
+  R2_marginal = r2_marg,
+  R2_conditionnel = r2_cond
+)
+
+# Arrondir
+donnees_model_I2M2_RRP <- donnees_model_I2M2_RRP %>%
+  mutate(across(where(is.numeric), ~ round(., 3)))
+```
+
+
+## Retranformer les données pour faire le plot sur les valeurs brutes
+
+```{r}
+newdata_RRP <- data.frame(
+  annee = seq(min(BDD_I2M2_RRP$annee), max(BDD_I2M2_RRP$annee), length.out = 200)
+)
+newdata_RRP$annee_c <- newdata_RRP$annee - min(BDD_I2M2_RRP$annee) + 1
+pred <- predict(Modele_I2M2_RRP, newdata_RRP, re.form = NA, se.fit = TRUE)
+
+newdata_RRP$fit   <- pred$fit
+newdata_RRP$lower <- pred$fit - 1.96 * pred$se.fit
+newdata_RRP$upper <- pred$fit + 1.96 * pred$se.fit
+```
+
+
+
+
+
+
+# Réseau RCS
+
+## Préparer les données
+```{r}
+BDD_I2M2_RCS <- BDD_I2M2%>% 
+  filter(reseaux=="RCS")%>% 
+  group_by(code_station) %>%
+  mutate(annee_c = (annee - min(annee) + 1),
+         annee_min = min(annee),
+         julian=lubridate::yday(date_prelevement)) 
+```
+
+## Plot pour vérifier visuelement la normalité
+```{r}
+ggplot(BDD_I2M2_RCS, aes(x=resultat_eqr))+
+  geom_histogram(show.legend = FALSE, color = "black")+
+  theme_bw()+
+  labs(title="données brutes",
+       x="Résultat",
+       y="Nombre")
+
+#Observer distribution des jours julian
+ggplot(BDD_I2M2_RCS, aes(x=julian))+
+  geom_histogram(show.legend = FALSE, color = "black")+
+  theme_bw()+
+  labs(title="Distribution jour julian",
+       x="jour julian",
+       y="Nombre")
+```
+
+## LMM sur les données brutes
+
+Hypothèse à tester: l'évolution de la valeur de l'indice dépend des stations 
+
+```{r}
+M_brute_RCS <- lmer(resultat_eqr ~ annee_c + (1 + annee_c | code_station)+ julian +operateur +libelle_typologie + annee_min, data = BDD_I2M2_RCS, REML=FALSE, lmerControl(optimizer = "bobyqa")) 
+
+sim_brute_RCS <- simulateResiduals(M_brute_RCS)
+plot(sim_brute_RCS, main = "DHARMa - M_brute_RCS")
+```
+
+###Tester la multicolinéarité
+```{r}
+vif(M_brute_RCS)
+```
+vif environ = à 1 donc pas de multicolinéarité, modele fiable
+
+
+## Tester toutes les combinaisons de modèles et déterminer les variables ayant un effet significatif
+```{r}
+options(na.action = "na.fail")
+dredge_brute_RCS <- dredge(M_brute_RCS)
+
+summary(model.avg(dredge_brute_RCS, subset = delta < 2))
+```
+
+Effet de l'année  significatif
+Effet de julian significatif
+
+
+## Identifier et retirer les outliers
+
+Pour les retirer, on a besoin de leur attribuer un identifiant.
+```{r}
+# Ajouter un identifiant unique
+BDD_I2M2_RCS$id_obs <- seq_len(nrow(BDD_I2M2_RCS))
+
+M_brute_RCS <- lmer(resultat_eqr ~ annee_c + (1 + annee_c | code_station) +id_obs, data = BDD_I2M2_RCS, REML=FALSE , lmerControl(optimizer = "bobyqa")) #pente aléatoire et intercept aléatoire en fonction des stations
+
+
+# Résidus DHARMa
+sim_brute_RCS<- simulateResiduals(M_brute_RCS, plot = FALSE)
+
+# Indices des outliers
+indices_outliers_RCS <- outliers(sim_brute_RCS, return = "index")
+
+# Données du modèle
+df_model_RCS <- model.frame(M_brute_RCS)
+outlier_table <- df_model_RCS[indices_outliers_RCS, ]
+
+# on a 4 outliers réparti en 2 stations:
+# - 03207020 = La riviere du commerce a lillebonne 3
+# - 03234215 = L'houay a moulins-sur-orne 1
+
+# Identifiants des outliers
+id_outliers_RCS <- df_model_RCS$id_obs[indices_outliers_RCS]
+
+# Retirer les outliers du jeu de données original
+BDD_I2M2_RCS_clean <- BDD_I2M2_RCS %>%
+  filter(!id_obs %in% id_outliers_RCS)
+```
+
+
+### Vérifier l'homogénéité des résidus
+```{r}
+M_brute_RCS_clean <- lmer(resultat_eqr ~ annee_c + (1 + annee_c | code_station), data = BDD_I2M2_RCS_clean, REML=FALSE) 
+
+# Plotez les valeurs prédites par rapport aux valeurs résiduelles
+par(mar = c(4, 4, 0.5, 0.5))
+plot(resid(M_brute_RCS_clean) ~ fitted(M_brute_RCS_clean), xlab = "Predicted values", ylab = "Normalized residuals")
+abline(h = 0, lty = 2)
+```
+
+La variance est homogène
+
+
+### Vérifier l'indépendance des résidus
+```{r}
+# Afin de vérifier l'indépendance des résidus du modèle,
+# nous devons tracer les résidus en fonction de chaque
+# covariable du modèle.
+par(mfrow = c(1, 3), mar = c(4, 4, 0.5, 0.5))
+
+plot(resid(M_brute_RCS_clean) ~ BDD_I2M2_RCS_clean$resultat_eqr, xlab = "I2M2", ylab = "Normalized residuals")
+abline(h = 0, lty = 2)
+
+boxplot(resid(M_brute_RCS_clean) ~ annee_c, data = BDD_I2M2_RCS_clean, xlab = "Années",
+    ylab = "Normalized residuals")
+abline(h = 0, lty = 2)
+
+boxplot(resid(M_brute_RCS_clean) ~ code_station, data = BDD_I2M2_RCS_clean, xlab = "stations", ylab = "Normalized residuals")
+abline(h = 0, lty = 2)
+```
+Il semble que l'indépendance des résidus soit vérifiée
+
+
+## Interprétation du modèle
+
+```{r}
+Modele_I2M2_RCS <- lmer(resultat_eqr~ annee_c + (1 + annee_c | code_station), data = BDD_I2M2_RCS_clean, REML=TRUE,control=lmerControl(optimizer = "bobyqa")) 
+
+# Résumé avec p-values
+summary(Modele_I2M2_RCS)
+
+# Résumé
+coef_table_RCS <- as.data.frame(coef(summary(Modele_I2M2_RCS)))
+names(coef_table_RCS) <- c("Estimate", "Std_Error", "df", "t_value", "p_value")
+
+# Extraire les valeurs
+intercept_est  <- coef_table_RCS["(Intercept)", "Estimate"]
+intercept_p    <- coef_table_RCS["(Intercept)", "p_value"]
+
+annee_est      <- coef_table_RCS["annee_c", "Estimate"]
+annee_p        <- coef_table_RCS["annee_c", "p_value"]
+
+# R²
+r2_vals <- r.squaredGLMM(Modele_I2M2_RCS)
+r2_marg <- r2_vals[1]
+r2_cond <- r2_vals[2]
+
+# Construire un tableau déjà tidy
+donnees_model_I2M2_RCS <- data.frame(
+  libelle_indice = "I2M2",
+  reseaux = "RCS",
+  intercept_estimate = intercept_est,
+  intercept_pvalue = intercept_p,
+  annee_estimate = annee_est,
+  annee_pvalue = annee_p,
+  R2_marginal = r2_marg,
+  R2_conditionnel = r2_cond
+)
+
+# Arrondir
+donnees_model_I2M2_RCS <- donnees_model_I2M2_RCS %>%
+  mutate(across(where(is.numeric), ~ round(., 3)))
+```
+
+## Retranformer les données pour faire le plot sur les valeurs brutes
+```{r}
+newdata_RCS <- data.frame(
+  annee = seq(min(BDD_I2M2_RCS_clean$annee), max(BDD_I2M2_RCS_clean$annee), length.out = 200)
+)
+newdata_RCS$annee_c <- newdata_RCS$annee - min(BDD_I2M2_RCS_clean$annee) + 1
+pred <- predict(Modele_I2M2_RCS, newdata_RCS, re.form = NA, se.fit = TRUE)
+
+newdata_RCS$fit   <- pred$fit
+newdata_RCS$lower <- pred$fit - 1.96 * pred$se.fit
+newdata_RCS$upper <- pred$fit + 1.96 * pred$se.fit
+```
+
+# Graphiques 
+
+## Tendances générales des deux réseaux
+```{r}
+bornes_I2M2 <- list(
+  #bornes pour l'I2M2
+  "7613" = list( 
+    borne_inf = c(0,0.148,0.295,0.443,0.665),
+    borne_sup = c(0.148,0.295,0.443,0.665,1),
+    couleurs  = c("red","orange","yellow","lightgreen","#2b83ba"),
+    classe_libelle = c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
+  ))
+
+classes_generales_I2M2 <- creation_classes(col_code= "7613", 
+                                bornes_indices=bornes_I2M2)
+```
+
+```{r}
+Tendances_generales <- ggplot(BDD_I2M2, aes(x = annee, y = resultat_eqr)) +
+  ggplot2::geom_rect(
+      data = classes_generales_I2M2,
+      ggplot2::aes(
+        ymin = classe_borne_inf,
+        ymax = classe_borne_sup,
+        fill = classe_libelle
+      ),
+      xmin = -Inf,
+      xmax = Inf,
+      alpha = 0.2,
+      inherit.aes = FALSE
+    ) +
+  ggplot2::scale_fill_manual(
+      name = "Etat biologique",
+      values = setNames(classes_generales_I2M2$classe_couleur, classes_generales_I2M2$classe_libelle),
+      guide = ggplot2::guide_legend(reverse = TRUE)
+    ) +
+  geom_point(colour = "black", size = 1
+             , alpha = 0.1) +
+  geom_line(
+    data = newdata_RCS,
+    aes(x = annee, y = fit, colour = "Tendance générale RCS"),
+    linewidth = 1.3,
+    inherit.aes = FALSE
+  ) +
+  geom_line(
+  data = newdata_RCS,
+  aes(x = annee, y = lower),
+  linetype = "dotted",
+  colour = "#CD6839",
+  linewidth = 1,
+  alpha=1,
+  inherit.aes = FALSE
+) +
+geom_line(
+  data = newdata_RCS,
+  aes(x = annee, y = upper),
+  linetype = "dotted",
+  colour = "#CD6839",
+  linewidth = 1,
+  alpha=1,
+  inherit.aes = FALSE
+) +
+  geom_line(
+    data = newdata_RRP,
+    aes(x = annee, y = fit, colour = "Tendance générale RRP"),
+    linewidth = 1.3,
+    inherit.aes = FALSE
+  ) +
+  geom_line(
+  data = newdata_RRP,
+  aes(x = annee, y = lower),
+  linetype = "dotted",
+  colour = "#2D0084",
+  linewidth = 1,
+  alpha=1,
+  inherit.aes = FALSE
+) +
+geom_line(
+  data = newdata_RRP,
+  aes(x = annee, y = upper),
+  linetype = "dotted",
+  colour = "#2D0084",
+  linewidth = 1,
+  alpha=1,
+  inherit.aes = FALSE
+)+
+  scale_color_manual(
+   name = "Droites de tendance",
+   values = c(
+    "Tendance générale RCS" = "#CD6839",
+    "Tendance générale RRP" = "#2D0084"
+  ))+
+  labs(
+    title = "Tendances temporelles générales des résultats de l'EQR Indice Invertébrés Multimétrique (I2M2) par réseaux.",
+    subtitle = "Formule LMM = <i>resultat_eqr ~ annee_centree + (1 + annee_centree | code_station)</i>.<br>
+    Les lignes en pointillés correspondent aux intervalles de confiance des tendances. ",
+    caption="**EQR** = Ecological Quality Ratio, il s'agit d'un ratio entre le résultat observé et une valeur de référence.<br>
+**<span style='color:#CD6839;'>RCS</span>**= Réseau de Contrôle de Surveillance.<br>
+**<span style='color:#2D0084;'>RRP</span>**= Réseau de Référence Perenne.<br>
+Une augmentation de la valeur de l'I2M2 correspond à l'amélioration de l'état biologique.<br>
+L'I2M2 est étudié sur la periode 2013-2024 pour le réseau **<span style='color:#2D0084;'>RRP</span>** et 2007-2024 pour le réseau **<span style='color:#CD6839;'>RCS</span>**.",
+    x = "Année",
+    y = "I2M2"
+  ) +
+  theme_bw() +
+  theme(plot.title=element_textbox_simple(size=16, 
+                                            face="bold", 
+                                            margin = margin(t=10,b = 10)),
+        plot.subtitle = ggtext::element_textbox_simple(
+          size = 13, margin = margin(b = 10)
+        ),
+        axis.title = element_text(size=14),
+        axis.text = element_text(size=12),
+        legend.title=element_text(size=13, face="bold"),
+        legend.text=element_text(size=13),
+        legend.position = "right",
+        legend.title.position = "top",
+        plot.caption = element_textbox_simple(
+          size = 12,
+          hjust = 0,      # 0 = aligné à gauche, 1 = à droite
+          lineheight = 1.2,
+          margin=margin(t=10),
+          fill = "white", 
+          box.color = "black",
+          width = unit(0.80, "npc")
+      )
+        )
+
+
+ggplot2::ggsave(
+      filename = file.path("../Output/1_Tendance_indice/03_LMM/I2M2/Tendances_generales_I2M2.jpg"),
+      plot     = Tendances_generales,
+      width    = 13,
+      height   = 10)
+```
+
+##RRP
+
+```{r}
+stations.coef_RRP <- coef(Modele_I2M2_RRP)$code_station
+stations.coef_RRP$code_station <- rownames(stations.coef_RRP)
+
+stations.coef_RRP <- coef(Modele_I2M2_RRP)$code_station %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("code_station") %>%
+  dplyr::rename(
+    intercept_station = `(Intercept)`,
+    pente_station = annee_c
+  )
+
+lines_by_station_RRP <- BDD_I2M2_RRP %>%
+  dplyr::select(code_station, libelle_station,code_departement, annee, annee_c) %>%
+  dplyr::distinct() %>%
+  dplyr::left_join(stations.coef_RRP, by = "code_station") %>%
+  dplyr::mutate(
+    fit = intercept_station + pente_station * annee_c
+  )
+
+```
+
+Définir l'ordre d'apparition des stations en fonction de la valeur de la pente
+```{r}
+ordre_stations_RRP <- lines_by_station_RRP %>%
+  distinct(libelle_station, pente_station) %>%
+  arrange(pente_station) %>%
+  pull(libelle_station)
+
+BDD_I2M2_RRP <- BDD_I2M2_RRP %>%
+  mutate(libelle_station = factor(libelle_station, levels = ordre_stations_RRP))
+
+lines_by_station_RRP <- lines_by_station_RRP %>%
+  mutate(libelle_station = factor(libelle_station, levels = ordre_stations_RRP))
+
+lab_facet_RRP <- BDD_I2M2_RRP %>%
+  ungroup() %>% 
+  distinct(libelle_station, code_departement) %>%
+  mutate(label = paste0(libelle_station, " (", code_departement, ")")) %>%
+  select(-code_departement) %>%   # garder seulement 2 colonnes
+  tibble::deframe()
+```
+
+###Graphique facetté
+```{r}
+classes_I2M2 <- valeurs_seuils %>%
+  filter(indice=="I2M2") %>% 
+  dplyr::rename(
+    classe_borne_inf = seuil_bas,
+    classe_borne_sup = seuil_haut,
+    classe_libelle   = classe,
+    classe_couleur   = couleur
+  )
+
+library(colorspace)
+
+classes_I2M2$classe_couleur <- lighten(classes_I2M2$classe_couleur, 0.7)
+classes_I2M2$classe_libelle <- factor(
+  classes_I2M2$classe_libelle,
+  levels = c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
+)
+
+```
+
+```{r}
+n_facettes_RRP <- length(unique(BDD_I2M2_RRP$libelle_station))
+n_col_RRP <-5
+n_lignes_RRP <- ceiling(n_facettes_RRP / n_col_RRP)
+hauteur_plot_RRP <- n_lignes_RRP * 3
+largeur_plot_RRP <- n_col_RRP * 4
+
+Tendance_I2M2_RRP <- ggplot(BDD_I2M2_RRP, aes(x = annee, y = resultat_eqr)) +
+  geom_rect(
+    data = classes_I2M2,
+    aes(
+      ymin = classe_borne_inf,
+      ymax = classe_borne_sup,
+      fill = classe_libelle
+    ),
+    xmin = -Inf,
+    xmax = Inf,
+    alpha = 0.6,
+    inherit.aes = FALSE
+  ) +
+  scale_fill_manual(
+    name = "État biologique",
+    values = setNames(classes_I2M2$classe_couleur, classes_I2M2$classe_libelle),
+    guide = guide_legend(reverse = TRUE)
+  ) +
+ geom_line(
+  data = newdata_RRP,
+  aes(x = annee, y = lower),
+  linetype = "dotted",
+  colour = "#2D0084",
+  linewidth = 0.6,
+  alpha=0.6,
+  inherit.aes = FALSE
+) +
+geom_line(
+  data = newdata_RRP,
+  aes(x = annee, y = upper),
+  linetype = "dotted",
+  colour = "#2D0084",
+  linewidth = 0.6,
+  alpha=0.6,
+  inherit.aes = FALSE
+)+
+  geom_line(
+    data = newdata_RRP,
+    aes(x = annee, y = fit, colour = "Tendance générale des stations RRP"),
+    linewidth = 1,
+    linetype=2,
+    inherit.aes = FALSE
+  ) +
+  geom_point(colour = "#990099FF", size = 2
+             , alpha = 0.7) +
+  geom_line(
+    data = lines_by_station_RRP,
+    aes(x = annee, y = fit, colour = "Tendance de la station"),
+    linewidth = 1
+  ) +
+  scale_color_manual(
+  name = "Droites de tendance",
+  values = c(
+    "Tendance générale des stations RRP" = "#2D0084",
+    "Tendance de la station" = "#990099FF"
+  ))+
+  scale_x_continuous(
+    breaks = seq(
+      from = min(BDD_I2M2_RRP$annee),
+      to   = max(BDD_I2M2_RRP$annee),
+      by   = 2
+    ))+
+  facet_wrap(~libelle_station, ncol= n_col_RRP, labeller = labeller(libelle_station = lab_facet_RRP))+
+  labs(
+    title = "Tendance temporelle des résultats de l'EQR Indice Invertébrés Multimétrique (I2M2) pour les stations <span style='color:#2D0084;'>RRP</span>, et comparaison avec la tendance générale des stations <span style='color:#2D0084;'>RRP</span>.",
+    subtitle="Formule LMM = <i>resultat_eqr ~ annee_centree + (1 + annee_centree | code_station)</i>.<br>
+    Les lignes en pointillés délimitent l'intervalle de confiance de la tendance générale du réseau **<span style='color:#2D0084;'>RRP</span>**.",
+    caption="**EQR** = Ecological Quality Ratio, il s'agit d'un ratio entre le résultat observé et une valeur de référence.<br>
+**<span style='color:#2D0084;'>RRP</span>**= Réseau de Référence Perenne.<br>
+Une augmentation de la valeur de l'I2M2 correspond à l'amélioration de l'état biologique.<br>
+L'I2M2 est étudié sur la periode 2013-2024.",
+    x = "Année",
+    y = "I2M2"
+  ) +
+  theme_bw() +
+  theme(
+    plot.title=element_textbox_simple(
+      size = 20,           # Taille du texte
+      face = "bold",       # Gras
+      margin = margin(b = 10) ),# Marge en bas
+    plot.subtitle=element_markdown(
+      size = 16,           # Taille du texte
+      lineheight = 1.3,
+      margin = margin(b = 5) ),# Marge en bas
+    axis.title = element_text(size=16),
+    legend.title=element_text(size=16, face="bold"),
+    legend.text=element_text(size=14),
+    legend.position = "bottom",
+    legend.title.position = "top",
+    strip.text = element_textbox_simple(size=11, margin = margin(10,3,7,3),halign = 0.5),
+    strip.background = element_rect(fill = NA, color = "black"),
+    plot.caption = element_textbox_simple(
+      size = 13,
+      hjust = 0,      # 0 = aligné à gauche, 1 = à droite
+      lineheight = 1.2,
+      margin=margin(b=5),
+      box.color = "black",
+      linewidth = 0.7,
+      width = unit(0.80, "npc")
+      ))
+
+ggplot2::ggsave(
+      filename = file.path("../Output/1_Tendance_indice/03_LMM/I2M2/Tendance_I2M2_RRP.jpg"),
+      plot     = Tendance_I2M2_RRP,
+      width    = largeur_plot_RRP,
+      height   = hauteur_plot_RRP)
+```
+
+
+
+## RCS
+
+### Graphique facetté
+```{r}
+stations.coef_RCS <- coef(Modele_I2M2_RCS)$code_station
+stations.coef_RCS$code_station <- rownames(stations.coef_RCS)
+
+stations.coef_RCS <- coef(Modele_I2M2_RCS)$code_station %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("code_station") %>%
+  dplyr::rename(
+    intercept_station = `(Intercept)`,
+    pente_station = annee_c
+  )
+
+lines_by_station_RCS <- BDD_I2M2_RCS_clean %>%
+  dplyr::select(code_station, libelle_station, code_departement, annee, annee_c) %>%
+  dplyr::distinct() %>%
+  dplyr::left_join(stations.coef_RCS, by = "code_station") %>%
+  dplyr::mutate(
+    fit = intercept_station + pente_station * annee_c
+  )
+```
+
+Définir l'ordre d'apparition des stations en fonction de la valeur de la pente
+```{r}
+ordre_stations_RCS <- lines_by_station_RCS %>%
+  distinct(libelle_station, pente_station) %>%
+  arrange(pente_station) %>%
+  pull(libelle_station)
+
+BDD_I2M2_RCS_clean <- BDD_I2M2_RCS_clean %>%
+  mutate(libelle_station = factor(libelle_station, levels = ordre_stations_RCS))
+
+lines_by_station_RCS <- lines_by_station_RCS %>%
+  mutate(libelle_station = factor(libelle_station, levels = ordre_stations_RCS))
+
+lab_facet_RCS <- BDD_I2M2_RCS_clean %>%
+  ungroup() %>% 
+  distinct(libelle_station, code_departement) %>%
+  mutate(label = paste0(libelle_station, " (", code_departement, ")")) %>%
+  select(-code_departement) %>%   # garder seulement 2 colonnes
+  tibble::deframe()
+```
+
+```{r}
+n_facettes_RCS <- length(unique(BDD_I2M2_RCS_clean$libelle_station))
+n_col_RCS <-6
+n_lignes_RCS <- ceiling(n_facettes_RCS / n_col_RCS)
+hauteur_plot_RCS <- n_lignes_RCS * 2.5
+largeur_plot_RCS <- n_col_RCS * 3
+
+Tendance_I2M2_RCS <- ggplot(BDD_I2M2_RCS_clean, aes(x = annee, y = resultat_eqr)) +
+  geom_rect(
+    data = classes_I2M2,
+    aes(
+      ymin = classe_borne_inf,
+      ymax = classe_borne_sup,
+      fill = classe_libelle
+    ),
+    xmin = -Inf,
+    xmax = Inf,
+    alpha = 0.5,
+    inherit.aes = FALSE
+  ) +
+  scale_fill_manual(
+    name = "État biologique",
+    values = setNames(classes_I2M2$classe_couleur, classes_I2M2$classe_libelle),
+    guide = guide_legend(reverse = TRUE)
+  ) +
+ geom_line(
+  data = newdata_RCS,
+  aes(x = annee, y = lower),
+  linetype = "dotted",
+  colour = "#CD6839",
+  linewidth = 0.6,
+  alpha=0.6,
+  inherit.aes = FALSE
+) +
+geom_line(
+  data = newdata_RCS,
+  aes(x = annee, y = upper),
+  linetype = "dotted",
+  colour = "#CD6839",
+  linewidth = 0.6,
+  alpha=0.6,
+  inherit.aes = FALSE
+) +
+  geom_line(
+    data = newdata_RCS,
+    aes(x = annee, y = fit, colour = "Tendance générale des station RCS"),
+    linewidth = 1,
+    inherit.aes = FALSE
+  ) +
+  geom_point(colour = "#990099FF", size = 2.5
+             , alpha = 0.7) +
+  geom_line(
+    data = lines_by_station_RCS,
+    aes(x = annee, y = fit, colour = "Tendance de la station"),
+    linewidth = 1.3
+  ) +
+  scale_color_manual(
+   name = "Droites de tendance",
+   values = c(
+    "Tendance générale des station RCS" = "#CD6839",
+    "Tendance de la station" = "#990099FF"
+  ))+
+  facet_wrap(~libelle_station, ncol=n_col_RCS, labeller = labeller(libelle_station = lab_facet_RCS))+
+  labs(
+    title = "Tendance temporelle des résultats de l'EQR Indice Invertébrés Multimétrique (I2M2) pour les stations <span style='color:#CD6839;'>RCS</span>, et comparaison avec la tendance générale des stations <span style='color:#CD6839;'>RCS</span>.",
+    subtitle="Formule LMM = <i>resultat_eqr ~ annee_centree + (1 + annee_centree | code_station)</i>.<br>
+    Les lignes en pointillés délimitent l'intervalle de confiance de la tendance générale du réseau **<span style='color:#CD6839;'>RCS</span>**.",
+    caption="**EQR** = Ecological Quality Ratio, il s'agit d'un ratio entre le résultat observé et une valeur de référence.<br>
+**<span style='color:#CD6839;'>RCS</span>**= Réseau de Contrôle de surveillance.<br>
+Une augmentation de la valeur de l'I2M2 correspond à l'amélioration de l'état biologique.<br>
+L'I2M2 est étudié sur la periode 2007-2024.",
+    x = "Année",
+    y = "I2M2"
+  ) +
+  theme_bw() +
+  theme(
+    plot.title=element_textbox_simple(
+      size = 20,           # Taille du texte
+      face = "bold",       # Gras
+      margin = margin(b = 10) ),# Marge en bas
+    plot.subtitle=element_markdown(
+      size = 16,           # Taille du texte
+      lineheight = 1.3,
+      margin = margin(b = 5) ),# Marge en bas
+    axis.title = element_text(size=16),
+    legend.title=element_text(size=16, face="bold"),
+    legend.text=element_text(size=14),
+    legend.position = "bottom",
+    legend.title.position = "top",
+    strip.text = element_textbox_simple(size=11, margin = margin(10,3,7,3),halign = 0.5),
+    strip.background = element_rect(fill = NA, color = "black"),
+    plot.caption = element_textbox_simple(
+      size = 13,
+      hjust = 0,      # 0 = aligné à gauche, 1 = à droite
+      lineheight = 1.2,
+      margin=margin(b=5),
+      fill = "white", 
+      box.color = "black",
+      width = unit(0.80, "npc")
+  ))
+
+ggplot2::ggsave(
+      filename = file.path("../Output/1_Tendance_indice/03_LMM/I2M2/Tendance_I2M2_RCS.jpg"),
+      plot     = Tendance_I2M2_RCS,
+      width    = largeur_plot_RCS,
+      height   = hauteur_plot_RCS)
+```
+
+# Sauvegarder tous les résultats
+
+## Résultats globaux région
+```{r}
+donnees_models_I2M2 <- bind_rows(donnees_model_I2M2_RRP, donnees_model_I2M2_RCS)
+```
+
+## pentes des stations
+```{r}
+export_pente_df_RRP <- coef(Modele_I2M2_RRP)$code_station %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("code_station") %>%
+  rename(
+    intercept = `(Intercept)`,
+    pente = annee_c
+  ) %>% 
+  mutate(reseaux="RRP")%>% 
+  select(-intercept)
+
+export_pente_df_RCS <- coef(Modele_I2M2_RCS)$code_station %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("code_station") %>%
+  rename(
+    intercept = `(Intercept)`,
+    pente = annee_c
+  ) %>% 
+  mutate(reseaux="RCS")%>% 
+  select(-intercept)
+```
+
+```{r}
+pentes_I2M2 <- bind_rows(export_pente_df_RRP, export_pente_df_RCS)
+
+pentes_LMM_I2M2<- BDD_I2M2 %>% 
+  dplyr::select(code_station, libelle_station, code_departement) %>%
+  dplyr::distinct() %>%
+  dplyr::left_join(pentes_I2M2, by = "code_station") %>% 
+  mutate(pente=round(pente,4))%>% 
+  mutate(libelle_indice="I2M2")
+```
+
+```{r}
+lines_by_station_I2M2 <- bind_rows(lines_by_station_RRP, lines_by_station_RCS)
+
+lines_by_station_I2M2 <- lines_by_station_I2M2 %>% 
+  mutate(libelle_indice="I2M2")
+```
+
+```{r}
+data_graph_RRP_I2M2 <- newdata_RRP %>% 
+  mutate(libelle_indice="I2M2")
+
+data_graph_RCS_I2M2 <- newdata_RCS %>% 
+  mutate(libelle_indice="I2M2")
+```
+
+```{r}
+saveRDS(donnees_models_I2M2, here("Data/clean_data/Models","donnees_models_I2M2.rds"))
+saveRDS(pentes_LMM_I2M2, here("Data/clean_data/Models","pentes_LMM_I2M2.rds"))
+saveRDS(lines_by_station_I2M2, here("Data/clean_data/Models","lines_by_station_I2M2.rds"))
+saveRDS(data_graph_RRP_I2M2, here("Data/clean_data/Models","data_graph_RRP_I2M2.rds"))
+saveRDS(data_graph_RCS_I2M2, here("Data/clean_data/Models","data_graph_RCS_I2M2.rds"))
+```

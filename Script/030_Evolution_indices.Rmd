@@ -1,0 +1,241 @@
+---
+title: "Visualiser l'évolution des indices et de leurs métriques."
+author: "Julia"
+date: "2026-02-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Ce script permet de visualiser l'évolution des indices au cours des années à l'échelle de la Normandie.
+
+# Installation
+## Chargement des packages
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(here)
+library(patchwork)
+library(trend)
+library(gt)
+library(scales)
+```
+
+## Chargement des fonctions
+```{r}
+source(here::here("R","fun_graph_evolution_indice.R"))
+source(here::here("R","fun_mann_kendall_sen.R"))
+source(here::here("R","fun_table_mk_sen.R"))
+```
+
+## Chargement des données
+```{r}
+BDD_indices <- readRDS(here("Data/clean_data", "BDD_indices.rds"))
+mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds")) 
+valeurs_seuils <- readRDS(here("Data/clean_data", "valeurs_seuils_indices.rds"))
+```
+
+## Sélection des données 
+```{r}
+BDD_indices <- BDD_indices %>% 
+  filter(code_station %in% mes_stations)
+```
+
+
+# 1.Graphiques montrant l'évolution des indices
+
+## Définir les bornes des classes de chaques indices
+
+```{r}
+liste_indices <- c("7613", "2928", "5856", "7036")
+
+bornes_indices <- list(
+  #bornes pour l'I2M2
+  "7613" = list( 
+    borne_inf = c(0,0.148,0.295,0.443,0.665),
+    borne_sup = c(0.148,0.295,0.443,0.665,1),
+    couleurs  = c("red","orange","yellow","lightgreen","#2b83ba"),
+    classe_libelle = c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
+  ),
+  #bornes pour l'IBD
+  "5856" = list(
+    borne_inf = c(0,0.30,0.55,0.78,0.94),
+    borne_sup = c(0.30,0.55,0.78,0.94,1),
+    couleurs  = c("red","orange","yellow","lightgreen","#2b83ba"),
+    classe_libelle = c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
+  ),
+  #bornes pour l'IBMR
+  "2928"=list(
+    borne_inf = c(0,0.51,0.64,0.77,0.92),
+    borne_sup = c(0.51,0.64,0.77,0.92,1),
+    couleurs  = c("red","orange","yellow","lightgreen","#2b83ba"),
+    classe_libelle = c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
+  ),
+  #bornes pour l'IPR
+  "7036"=list(
+    borne_inf = c(0,5,16,25,36),
+    borne_sup = c(5,16,25,36,60),
+    couleurs  = c("red","orange","yellow","lightgreen","#2b83ba"),
+    classe_libelle = c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
+  )
+)
+```
+
+
+## Graphiques
+
+```{r}
+#Utilisation du package {purr} pour appliquer notre fonction à la liste de départements
+walk( liste_indices, 
+      ~trend_indice( BDD_indices,
+                     bornes_indices=bornes_indices,
+                     col_resultat_indice = "resultat_eqr",
+                     var_temporelle="annee",
+                     col_libelle_qualification="libelle_qualification",
+                     code_indice_val = .x,
+                     sous_titre = "Méthode lm",
+                    repertoire = "../Output/1_Tendance_indice/01_Graph_methode_lm" ) )
+```
+
+
+# 3.Identifier les tendances: Test de Mann-kendall / Sen-Theil
+
+Le test de tendance de Mann-Kendall est utilisé pour déterminer si une tendance existe dans les données issues des séries chronologiques. Il s'agit d'un test non paramétrique, nos données n'ont donc pas besoin de suivre une distribution normale. 
+
+Il s'agit d'un test d'hypothèses et les deux hypothèses sont les suivantes :
+
+  1. H0 : Il n'y a pas de tendance dans les données (valeur p>0,05).
+  2. H1 : Une tendance est présente dans les données
+  
+Ensuite, le test de Sen-Theil permet de calculer la pente de la tendance. 
+
+Il est important que la variable de temps soit ordonnée pour réaliser le test de Mann-Kendall.
+
+
+## Réaliser les tests sur les données brutes de chaque indice, toutes stations confondues
+
+### Tests
+```{r}
+mes_indices <- c("7036", "2928", "5856", "7613")
+
+resultats_globaux <- mes_indices %>%
+  map_df(function(ind) { #appliquer la fonction à la liste d'indices
+    df_ind <- BDD_indices %>%
+      filter(code_indice == ind) %>%
+      select(code_station, 
+             libelle_station, 
+             code_departement,
+             annee, 
+             resultat_eqr, 
+             libelle_indice) %>%
+      arrange(annee)
+    
+    res <- mann_kendall_sen(df_ind$resultat_eqr)
+    
+    tibble(
+      indice = unique(df_ind$libelle_indice),
+      mk_pvalue = res$mk_pvalue,
+      sens_slope = res$sens_slope
+    )
+  })
+```
+
+Les périodes sur lesquelles on a calculé les tendances peuvent différer selon les indices et les stations, on récupère donc les informations temporelles.
+```{r}
+donnes_globales <- BDD_indices %>%
+  group_by(libelle_indice) %>%
+  summarise(
+    nb_annees = n_distinct(annee),
+    annee_min = min(annee, na.rm = TRUE),
+    annee_max = max(annee, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(periode = paste0(annee_min, "–", annee_max)) %>% 
+  right_join(resultats_globaux, 
+             by =c("libelle_indice"="indice"))
+```
+
+### Générer le tableau récapitulatif 
+
+Contrairement aux 3 autres indices, lorsque la valeur de l'IPR augmente cela traduit une dégradation de l'état écologique. On a donc inversé les pentes pour qu'elles puissent être interprétées de la mêmes façon que pour les autres indices.
+
+```{r}
+table_pentes_globales(data=donnes_globales,
+                      periode_etudiee = "2007-2024")
+```
+
+## Réaliser les tests sur les données brutes de chaque indice et par station
+
+### Test
+```{r}
+resultats_stations <- mes_indices %>%
+  map_df(function(ind) {
+    df_ind <- BDD_indices %>%
+      filter(code_indice == ind) %>%
+      select(
+        code_station,
+        libelle_station,
+        code_departement,
+        annee,
+        resultat_eqr,
+        libelle_indice
+      )
+    
+    df_ind %>%
+      group_by(code_station,
+               libelle_station,
+               code_departement,
+               libelle_indice) %>%
+      arrange(annee) %>%
+      summarise(
+        mk_pvalue = mann_kendall_sen(resultat_eqr)$mk_pvalue,
+        sens_slope = mann_kendall_sen(resultat_eqr)$sens_slope,
+        .groups = "drop"
+      )
+  })
+```
+
+Les périodes sur lesquelles on a calculé les tendances peuvent différer selon les indices et les stations, on récupère donc les informations temporelles.
+
+```{r}
+donnes_station <- BDD_indices %>%
+  group_by(code_station,
+           libelle_station,
+           code_departement,
+           libelle_indice) %>%
+  summarise(
+    nb_annees = n_distinct(annee),
+    annee_min = min(annee, na.rm = TRUE),
+    annee_max = max(annee, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(periode = paste0(annee_min, "–", annee_max)) %>%
+  right_join(
+    resultats_stations,
+    by = c(
+      "code_station",
+      "libelle_station",
+      "code_departement",
+      "libelle_indice"
+    )
+  )
+```
+
+### Générer un tableau récapitulatif avec les valeurs des pentes
+Ici aussi les pentes de l'IPR ont été inversées.
+
+```{r}
+table_pentes_stations(data=donnes_station,
+                         periode_etudiee ="2007-2024")
+```
+
+### Créer un tableau récapitulatif avec la tendance (amélioration ou déterioration) 
+
+Ici aussi les pentes de l'IPR ont été inversées.
+
+```{r}
+table_tendances_stations(data= donnes_station,
+                         periode_etudiee ="2007-2024")
+```

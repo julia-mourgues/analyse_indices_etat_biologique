@@ -1,0 +1,345 @@
+---
+title: "Présentation scripts"
+author: "Julia"
+date: "2026-04-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(here)
+library(sf)
+library(readxl)
+```
+
+# Installation
+##** 001_Recuperation_stations_réseau_poissons.Rmd **
+
+Cette étude se base sur les stations échantillonnées par pèche électrique en Normandie.
+Ce premier script permet de :
+- récupérer la liste des stations à partir d'un geopackage;
+- récupérer les typologie des stations à partir d'un fichier excel.
+
+Fichiers necessaires:
+- Stations_peche.gpkg
+- hydrobio_Base_station_active.xlsx
+
+Aperçu des fichiers:
+```{r}
+stations_peche <- st_read(here("Data", "Stations_peche.gpkg")) 
+Base_station_active <- read_excel(here("Data/raw_data", "hydrobio_Base_station_active.xlsx"), 
+    sheet = "Base active")
+
+head(stations_peche, n=2)
+head(Base_station_active, n=2)
+```
+
+
+Fonctions utilisées:
+- fun_typologie.R
+
+Objets générés:
+- mes_stations_peche.rds        #liste de codes stations
+- mes_sta_pp.rds                #liste de codes points de prélèvement
+- stations_peche.rds            #table avec informations sur les stations
+- stations_typologie.rds        #table avec typologies des stations
+- Base_station_active_clean.rds #Version nettoyée de hydrobio_Base_station_active.xlsx
+
+
+## ** 002_Recuperation_donnees_ASPE_et_Hydrobio**
+Ce script permet de récupérer les données Aspe depuis la base de données de l'IDG et les données Hydrobio depuis l'API Hubeau.
+
+Il est nécessaire d'avoir un identifiant et un code d'accès à la base ASPE
+
+Fichiers nécessaires:
+- mes_stations_peche.rds
+
+Fonctions utilisées: 
+- fun_get_data_hydrobio.R
+
+```{r}
+mes_stations_peche<- readRDS(here("Data/clean_data", 
+                                  "mes_stations_peche.rds")) 
+head(mes_stations_peche, n=2)
+```
+
+Objets générés:
+- hydrobio_data.rda
+- export aspe au format .rda
+
+
+## ** 003_Recuperation_algorithmes_SEEE.Rmd**
+
+Ce script permet de récupérer les algorithmes du SEEE et de calculer les indices d'état écologiques ainsi que leurs métriques.
+
+Fichiers nécessaires:
+- hydrobio_data.rda
+- Base_station_active_clean.rds
+
+Tables générées:
+- valeurs_seuils_indices.rds  #contient les seuils des classes d'état écologique
+- indices_hydrobio_SEEE.rds  #contient les résultats des indices et des EQR
+
+# Construction des jeux de données
+## ** 011_Construction_jeux_donnees_ASPE.Rmd**
+Ce script permet de construire le jeu de données rassemblant les informations de pêche à partir des tables téléchargées dans le script 002
+
+Fichiers nécessaires:
+- mes_stations_peche.rds
+- stations_typologie.rds
+
+
+Objet générés:
+- mes_stations_sans_RHP.rds
+- mes_stations_RCS.rds
+- mes_stations_RRP.rds
+- aspe_clean_data.rda       #ensemble de 3 tables rassemblant les données Aspe
+
+
+##** 012_Construction_jeux_donnees_hydrobio.Rmd**
+Ce script permet de construire je jeu de données rassemblant les 3 dataframe téléchargés via l'API Hub'Eau dans le script 002.
+
+Fichiers nécessaires:
+- hydrobio_data.rda
+- mes_stations_peche.rds
+- operation.csv
+- indices_hydrobio_SEEE.rds
+
+Fonctions utilisées: 
+- fun_typologie.R
+
+Tables générées
+- hydrobio_clean_data.rda  # regroupe les tables "hydrobio_stations_indices" et "hydrobio_taxo_final"
+
+## ** 013_Graphs_donnees_dispo.Rmd**
+Ce script permet de générer les représentations graphiques des disponibilité des données des indices par années et par stations. On prend en compte les données correctes et les données non définissables.
+
+Fichiers nécessaires:
+- aspe_clean_data.rda
+- hydrobio_clean_data.rda
+
+Fonction utilisée:
+- fun_graph_dispo_donnees.R
+
+Graphiques générés:
+- ../Output/0_Disponibilite_donnees
+
+
+#Jointure, arrangement et exploration du jeu de données final
+
+## ** 020_BDD_commune.Rmd**
+Ce script permet de construire une base de données commune aux données ASPE et Hydrobio afin de représenter l'évolution des indices au cours des années
+
+L'objectif est d'obtenir 3 tables:
+- une table contenant les valeurs des différents indices 
+- une table contenant les valeurs des métriques calculées à part
+- une table contenant la taxonomie 
+
+Fichiers nécessaires:
+- aspe_clean_data.rda
+- hydrobio_clean_data.rda
+- mes_stations_sans_RHP.rds
+
+Fonctions utilisées:
+- fun_cycle_DCE.R
+- fun_calc_metriques_IBMR.R
+- fun_calc_metriques_IBD.R
+- fun_calc_metriques_I2M2.R
+- fun_calc_metriques_IPR.R
+
+Tables générées:
+- BDD_taxo.rds
+- BDD_metriques.rds
+- BDD_indices.rds
+- BDD_indices_metriques.rds
+
+## ** 021_Selection_stations.Rmd**
+Ce script permet de sélectionner les stations qui seront étudiées sur la base des critères suivants:
+- distance entre les points échantillonnés
+- nombre de données disponibles sur la période
+- limites d'application de l'IPR
+
+Fichiers nécessaires:
+- aspe_clean_data.rda
+- hydrobio_clean_data.rda
+- mes_stations_sans_RHP.rds
+- BDD_indices.rds
+
+Fonction utilisée:
+- fun_compte_indices.R
+
+Objets générés:
+- liste_stations_retenues.rds
+- liste_sta_IPR_non_applicable.rds
+
+## ** 022_Distribution_indices.Rmd**
+Ce script permet de générer des graphiques pour visualiser la distribution des résultats d'EQR de nos indices.
+
+Fichiers nécessaires:
+- BDD_indices.rds
+- liste_stations_retenues.rds
+
+Fichiers générés:
+- ../Output/3_Distribution_indices/distrib_histo.png  # Histogramme de distribution des EQR
+- ../Output/3_Distribution_indicesdistrib_densite.png  # Graphiques de densité comparant les 3 cycles pour chaque EQR
+- BDD_3_cycle_indices.rds  " Table contenant les données des stations présentes dans les 3 cycles DCE
+
+
+# Etude des variations des indices
+
+## **030_Evolution_indices.Rmd**
+Ce script permet de visualiser l'évolution des indices au cours des années à l'échelle de la Normandie, en utilisant des régressions linéaires
+
+Fichiers nécessaires:
+- BDD_indices.rds
+- liste_stations_retenues.rds
+- valeurs_seuils_indices.rds
+
+Fonctions utilisées:
+- fun_graph_evolution_indice.R
+- fun_mann_kendall_sen.R
+- fun_table_mk_sen.R
+
+Fichiers générés:
+- ../Output/1_Tendance_indice/01_Graph_methode_lm  #Graphgiques par indice avec droite de régression linéaire
+- table_pentes_stations.pdf
+- table_tendances_stations.pdf
+- table_pentes_tendances_globales.pdf
+
+## ** 031_LMM_IPR.Rmd**
+Ce script permet de visualiser l'évolution de l'IPR au cours des années à l'échelle de la Normandie
+
+Fichiers nécessaires:
+- BDD_indices.rds
+- liste_stations_retenues.rds
+- valeurs_seuils_indices.rds
+
+Fonctions utilisées:
+- fun_classe_ecologique.R
+
+Fichiers générés:
+- Tendances_generales_IPR.jpg
+- Tendance_IPR_RRP.jpg & Tendance_IPR_RCS.jpg
+- LMM_IPR_pentes_RRP.pdf & LMM_IPR_pentes_RCS.pdf
+- LMM_IPR_intercepts_RRP.pdf & LMM_IPR_intercepts_RCS.pdf
+
+## ** 032_LMM_IBD.Rmd**
+Ce script permet de visualiser l'évolution de l'IBD au cours des années à l'échelle de la Normandie
+
+Fichiers nécessaires:
+- BDD_indices.rds
+- liste_stations_retenues.rds
+- valeurs_seuils_indices.rds
+
+Fonctions utilisées:
+- fun_classe_ecologique.R
+
+Fichiers générés:
+- Tendances_generales_IBD.jpg
+- Tendance_IBD_RRP.jpg & Tendance_IBD_RCS.jpg
+- LMM_IBD_pentes_RBD.pdf & LMM_IBD_pentes_RCS.pdf
+- LMM_IBD_intercepts_RRP.pdf & LMM_IBD_intercepts_RCS.pdf
+
+## ** 033_LMM_I2M2.Rmd**
+Ce script permet de visualiser l'évolution de l'I2M2 au cours des années à l'échelle de la Normandie
+
+Fichiers nécessaires:
+- BDD_indices.rds
+- liste_stations_retenues.rds
+- valeurs_seuils_indices.rds
+
+Fonctions utilisées:
+- fun_classe_ecologique.R
+
+Fichiers générés:
+- Tendances_generales_I2M2.jpg
+- Tendance_I2M2_RRP.jpg & Tendance_I2M2_RCS.jpg
+- LMM_I2M2_pentes_RRP.pdf & LMM_I2M2_pentes_RCS.pdf
+- LMM_I2M2_intercepts_RRP.pdf & LMM_I2M2_intercepts_RCS.pdf
+
+## ** 034_LMM_IBMR.Rmd**
+Ce script permet de visualiser l'évolution de l'IBMR au cours des années à l'échelle de la Normandie
+
+Fichiers nécessaires:
+- BDD_indices.rds
+- liste_stations_retenues.rds
+- valeurs_seuils_indices.rds
+
+Fonctions utilisées:
+- fun_classe_ecologique.R
+
+Fichiers générés:
+- Tendances_generales_IBMR.jpg
+- Tendance_IBMR_RRP.jpg & Tendance_IBMR_RCS.jpg
+- LMM_IBMR_pentes_RRP.pdf & LMM_IBMR_pentes_RCS.pdf
+- LMM_IBMR_intercepts_RRP.pdf & LMM_IBMR_intercepts_RCS.pdf
+
+
+## ** 035_ANOVA_cycleDCE.Rmd**
+Ce script permet de réaliser une ANOVA multiple pour comparer la moyenne des indices par cycle DCE.
+
+Nous avons un jeu de données avec des valeurs d'indices par année pour chaque stations. Nous nous intéressons à l'évolution de ces indices au cours des 3 cycles DCE. Pour ce faire, nous allons faire une ANOVA sur les résultats en fonction du cycle DCE. Nous allons commencer par calculer la médiane de chaque station par cycle DCE, afin d'avoir maximum 92 données par indice et par cycle. Puis nous effectuons une ANOVA sur les médianes.
+
+Fichier nécessaire:
+- BDD_3_cycle_indices.rds
+
+Fonctions utilisées:
+- fun_resultats_lm.R
+- fun_graph_evolution_indice.R
+- fun_anova_DCE.R
+- fun_test_non_parametrique.R
+- fun_classe_ecologique.R
+
+Fichiers générés:
+- boxplot des EQR par cycle DCE,  pour chaque indice et par réseau
+
+
+# Diagrammes alluviaux
+## **040_Proportions_classes_ecologiques.Rmd**
+
+Ce script permet de modéliser l'évolution des proportion des différents états écologiques en fonction de l'indice étudié.
+
+Il permet de réaliser des diagrammes alluviaux qui permettent de visualiser les changement de classe d'état écologique de chaque staton au cours du temps.
+
+Il permet aussi de faire tourner des modeles de regression logistique ordinales pour analyser l'évolution de l'état écologique au cours du temps, par indice et par réseau.
+
+Fichiers nécessaires:
+- BDD_indices.rds
+- liste_stations_retenues.rds
+
+Fonctions utilisées:
+- fun_graph_barplot_proportion.R
+- fun_clmm_indices.R
+- fun_graph_diagramme_alluvial.R
+
+
+## **041_Classes_ecologiques_element_declassant.Rmd**
+
+Ce script permet de visualiser l'évolution de l'état écologique des stations en utilisant pour chaque année et chaque station la classe d'état de l'élément déclassant. 
+Il permet aussi de visualiser les changements d'éléments déclassants pour chaque station au cours du temps.
+
+Fichiers nécessaires:
+- BDD_indices.rds
+- liste_stations_retenues.rds
+
+Fichiers générés:
+- table_element_declassant.rds
+- Element_declassant_RRP.jpg  & Element_declassant_RCS.jpg
+- Nom_Element_declassant_RRP.jpg  & Nom_Element_declassant_RCS.jpg
+
+
+## **042_Proportions_classes_ecologiques_cycle_DCE.Rmd**
+
+Il permet de réaliser des diagrammes alluviaux qui permettent de visualiser les changement de classe d'état écologique de chaque station pour chaque indice au cours des cycles DCE.
+
+Fichiers nécessaires:
+- BDD_indices.rds
+- liste_stations_retenues.rds
+
+Fonctions utilisées:
+- fun_classe_ecologique.R
+- fun_graph_diagramme_alluvial.R
+

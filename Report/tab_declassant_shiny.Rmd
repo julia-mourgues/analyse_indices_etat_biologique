@@ -1,0 +1,208 @@
+---
+title: "tab_declassant_shiny"
+output: html_document
+---
+
+# Chargement des packages
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(here)
+library(sf)
+library(ggtext)
+library(ggalluvial)
+library(shiny)
+library(gt)
+```
+
+# Chargement des données
+
+```{r}
+table_element_declassant <- readRDS(here("Data/clean_data", "table_element_declassant.rds"))
+```
+
+# Associer le code couleur des classes d'état 
+```{r}
+classe_libelle <- c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
+couleurs <- c("red", "orange", "yellow", "lightgreen", "#2b83ba")
+
+names(couleurs) <- classe_libelle
+```
+
+# Génerer une tableau au format shiny
+```{r message=TRUE, warning=FALSE}
+ui <- fluidPage(
+  
+  titlePanel("État biologique des stations"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      width = 3,
+      
+      # --- Filtres ---
+      selectInput("dep", "Département :", 
+                  choices = c("Tous", sort(unique(table_element_declassant$code_departement)))),
+      selectInput("reseau", "Réseau :", choices = "Tous"),
+      selectInput("station", "Station :", choices = "Tous"),
+      selectInput("annee", "Année :", choices = "Tous"),
+      
+      tags$hr(),
+      
+      # --- Légende des couleurs ---
+      tags$h4("Légende des classes"),
+      div(style="display:flex; flex-direction:column; gap:6px;",
+          
+          lapply(names(couleurs), function(nom) {
+            div(
+              style="display:flex; align-items:center; gap:8px;",
+              div(style=sprintf(
+                "width:20px; height:20px; background:%s; border-radius:3px;",
+                couleurs[nom]
+              )),
+              nom
+            )
+          })
+      )
+    ),
+    
+    mainPanel(
+      width = 9,
+      gt_output("table_gt")
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  
+  # --- Données préparées ---
+  tab2 <- table_element_declassant %>%
+    mutate(
+      etat_biologique = as.character(etat_biologique),
+      element_declassant = sapply(element_declassant, function(x) paste(x, collapse = ", "))
+    ) %>%
+    select(code_departement, reseaux, libelle_station, annee,
+           IBD, IBMR, I2M2, IPR, etat_biologique, element_declassant) %>%
+    arrange(code_departement, libelle_station, annee)
+  
+  # --- Mise à jour dynamique des filtres ---
+  
+  # 1) Quand le département change → mettre à jour réseau, station, année
+  observeEvent(input$dep, {
+    df <- tab2 %>% filter(code_departement == input$dep | input$dep == "Tous")
+    
+    updateSelectInput(session, "reseau",
+                      choices = c("Tous", sort(unique(df$reseaux))),
+                      selected = "Tous")
+    
+    updateSelectInput(session, "station",
+                      choices = c("Tous", sort(unique(df$libelle_station))),
+                      selected = "Tous")
+    
+    updateSelectInput(session, "annee",
+                      choices = c("Tous", sort(unique(df$annee))),
+                      selected = "Tous")
+  })
+  
+  # 2) Quand réseau change → mettre à jour station + année
+  observeEvent(input$reseau, {
+    df <- tab2 %>%
+      filter((code_departement == input$dep | input$dep == "Tous") &
+             (reseaux == input$reseau | input$reseau == "Tous"))
+    
+    updateSelectInput(session, "station",
+                      choices = c("Tous", sort(unique(df$libelle_station))),
+                      selected = "Tous")
+    
+    updateSelectInput(session, "annee",
+                      choices = c("Tous", sort(unique(df$annee))),
+                      selected = "Tous")
+  })
+  
+  # 3) Quand station change → mettre à jour année
+  observeEvent(input$station, {
+    df <- tab2 %>%
+      filter((code_departement == input$dep | input$dep == "Tous") &
+             (reseaux == input$reseau | input$reseau == "Tous") &
+             (libelle_station == input$station | input$station == "Tous"))
+    
+    updateSelectInput(session, "annee",
+                      choices = c("Tous", sort(unique(df$annee))),
+                      selected = "Tous")
+  })
+  
+  # --- Filtrage final des données ---
+  data_filtered <- reactive({
+    df <- tab2
+    
+    if (input$dep != "Tous") df <- df %>% filter(code_departement == input$dep)
+    if (input$reseau != "Tous") df <- df %>% filter(reseaux == input$reseau)
+    if (input$station != "Tous") df <- df %>% filter(libelle_station == input$station)
+    if (input$annee != "Tous") df <- df %>% filter(annee == input$annee)
+    
+    df
+  })
+  
+  # --- Tableau GT identique ---
+  output$table_gt <- render_gt({
+    
+    df <- data_filtered()
+    
+    df %>%
+      mutate(code_departement=paste("Département ", code_departement),
+         reseaux=paste("Réseau ", reseaux)) %>% 
+      group_by(code_departement, reseaux) %>% 
+      gt() %>% 
+      cols_hide(columns = c(code_departement, reseaux)) %>% 
+      tab_options(table.width = pct(70),
+                  table.font.size = px(13)) %>% 
+      tab_style(style = list(cell_text(indent = px(20)), 
+                             cell_borders(
+                               sides = "all",
+                               color = "#f7f7f7",
+                               weight = px(2))), 
+                locations = cells_body()) %>% 
+      tab_style(
+        style = list(cell_text(weight = "bold", size = px(14)), cell_fill(color = "#f7f7f7")),
+        locations = cells_row_groups()
+      ) %>% 
+      tab_style(
+        style = cell_text(size = px(14), weight = "bold"),
+        locations = cells_column_labels()) %>% 
+      opt_row_striping() %>% 
+      cols_label(
+        libelle_station = "Station",
+        etat_biologique = "Etat biologique",
+        reseaux = "Réseau",
+        annee = "Année",
+        element_declassant="Elément déclassant"
+      ) %>%
+      tab_header(
+        title = md("**Classe d'état biologique des 4 indices, par station et par année, et classe d'état biologique retenue pour la DCE.**"),
+        subtitle = md("La variable **Etat biologique** contient le nom de l'élément déclassant.")
+      ) %>% 
+      sub_missing(columns = c("IBD", "IBMR", "IPR", "I2M2")) %>%
+      data_color(columns = c("IBD", "IBMR", "I2M2", "IPR"),
+                 fn = function(x) ifelse(x %in% classe_libelle, couleurs[x], "transparent")) %>%
+      data_color(columns = "etat_biologique",
+                 fn = function(x) ifelse(x %in% classe_libelle, couleurs[x], "transparent")) %>%
+      text_transform(
+        locations = cells_body(columns = "etat_biologique"),
+        fn = function(x) ""
+      ) %>%
+      text_transform(
+        locations = cells_body(columns = c("IBD","IBMR","IPR","I2M2")),
+        fn = function(x) ""
+      ) %>%
+      cols_width(
+        c(IBD, IBMR, I2M2, IPR) ~ px(60),
+        etat_biologique ~ px(80),
+        element_declassant ~ px(140),
+        annee ~px(60),
+        libelle_station ~px(280)
+      ) %>%
+      cols_align(align = "center", columns = c("etat_biologique","element_declassant", "annee"))
+  })
+}
+
+
+shinyApp(ui, server)
+```

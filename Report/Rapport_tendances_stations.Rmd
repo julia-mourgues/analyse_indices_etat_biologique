@@ -1,0 +1,652 @@
+---
+title: "**Rapport sur l'analyse des tendances des indices d'état écologiques, pour les stations suivies en Normandie.**"
+author: "`r params$author`"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    highlight: pygments
+    theme: default
+    toc: false
+    css: css/ofb_theme_html.css
+params:
+  auteur: "Julia Mourgues"
+  annee_debut: 2007
+  annee_fin: 2024
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      warning = FALSE,
+                      message = FALSE)
+```
+
+```{r, echo = FALSE}
+htmltools::img(src = knitr::image_uri(here::here("Script/css", "logo_OFB_v2.png")),
+               alt = 'logo',
+               style = 'position:absolute; top:0; right:0; padding:10px; width:180px;')
+```
+
+
+> ⚠ **Préambule** :<br>
+> 
+> Les données couvrent la **période de `r params$annee_debut` à `r params$annee_fin`** (*paramètres de filtres pour la génération de cette fiche*). <br>
+>Les tendances ont été identifiées à l'aide de modèles linéaires mixtes affectués sur les résultats des EQR.
+>Les tendances ont été calculés à partir des résultats de 69 stations échantillonnées pour la pêche scientifique à l'électricité.
+
+<br>
+<br>
+
+```{r message=FALSE, warning=FALSE, echo = FALSE}
+library(tidyverse)
+library(sf)
+library(ggtext)
+library(gt)
+library(ggh4x)
+library(colorspace)
+library(here)
+library(glue)
+library(ggrepel)
+library(ggiraph)
+```
+
+```{r message=FALSE, warning=FALSE, echo = FALSE}
+load(here("Data/clean_data", "results_LMM.rda"))
+BDD_indices <- readRDS(here("Data/clean_data", "BDD_indices.rds"))
+
+BDD_metriques <- readRDS(here("Data/clean_data", "BDD_metriques.rds"))
+
+mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
+```
+
+
+```{r message=FALSE, warning=FALSE, echo = FALSE}
+source(here::here("R", "fun_classe_ecologique.R"))
+source(here::here("R", "fun_graph_diagramme_alluvial.R"))
+```
+
+
+# 1. Tendances temporelles générales des EQR, calculées pour les réseaux RCS et RRP à l'échelle de la Normandie
+<br>
+
+## Graphique des tendances générales par réseaux
+
+```{r}
+bornes <- list(
+  #bornes pour l'IPR
+  "IPR"=list(
+    borne_inf = c(0,5,16,25,36),
+    borne_sup = c(5,16,25,36,60),
+    couleurs  = c("red","orange","yellow","lightgreen","#2b83ba"),
+    classe_libelle = c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
+  ),
+  #bornes pour l'IBD
+  "IBD" = list(
+    borne_inf = c(0,0.30,0.55,0.78,0.94),
+    borne_sup = c(0.30,0.55,0.78,0.94,1),
+    couleurs  = c("red","orange","yellow","lightgreen","#2b83ba"),
+    classe_libelle = c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
+  ),
+  #bornes pour l'I2M2
+  "I2M2" = list( 
+    borne_inf = c(0,0.148,0.295,0.443,0.665),
+    borne_sup = c(0.148,0.295,0.443,0.665,1),
+    couleurs  = c("red","orange","yellow","lightgreen","#2b83ba"),
+    classe_libelle = c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")),
+  #bornes pour l'IBMR
+  "IBMR"=list(
+    borne_inf = c(0,0.51,0.64,0.77,0.92),
+    borne_sup = c(0.51,0.64,0.77,0.92,1),
+    couleurs  = c("red","orange","yellow","lightgreen","#2b83ba"),
+    classe_libelle = c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
+  )
+)
+
+classes_generales <- lapply(
+  names(bornes),
+  creation_classes,
+  bornes_indices = bornes
+)
+
+names(classes_generales) <- names(bornes)
+classes_generales <- bind_rows(classes_generales)
+
+classes_generales$classe_couleur <- lighten(classes_generales$classe_couleur, 0.7)
+```
+
+```{r}
+valeurs_lmm_RCS$reseau <- "RCS"
+valeurs_lmm_RRP$reseau <- "RRP"
+
+data_graph_all <- bind_rows(valeurs_lmm_RCS, valeurs_lmm_RRP)
+```
+
+```{r , fig.width=15, fig.height=11, out.width="90%", fig.align='center'}
+Tendances_generales <- ggplot(
+  BDD_indices,
+  aes(x = annee, y = resultat_eqr)
+) +
+  
+  # Bandes d'état biologique
+  geom_rect(
+    data = classes_generales,
+    aes(
+      ymin = classe_borne_inf,
+      ymax = classe_borne_sup,
+      fill = classe_libelle
+    ),
+    xmin = -Inf,
+    xmax = Inf,
+    alpha = 0.7,
+    inherit.aes = FALSE
+  ) +
+  
+  scale_fill_manual(
+    name = "État biologique",
+    values = setNames(
+      classes_generales$classe_couleur,
+      classes_generales$classe_libelle
+    ),
+    guide = guide_legend(reverse = TRUE)
+  ) +
+  
+  # Points observationnels
+  geom_point(
+    colour = "black",
+    size = 0.6,
+    alpha = 0.1
+  ) +
+  
+  # Tendances RCS / RRP
+  geom_line(
+  data = data_graph_all,
+  aes(x = annee, y = fit, colour = reseau,
+      group = interaction(reseau, libelle_indice)),
+  linewidth = 1,
+  inherit.aes = FALSE
+) +
+
+geom_point_interactive(
+  data = data_graph_all,
+  aes(
+    x = annee,
+    y = fit,
+    colour = reseau,
+    tooltip = paste0(
+      "Réseau : ", reseau, "\n",
+      "Indice : ", libelle_indice, "\n",
+      "Année : ", annee, "\n",
+      "EQR prédit : ", round(fit, 3)
+    ),
+    data_id = paste(reseau, libelle_indice, annee)
+  ),
+  size = 1.5,
+  alpha = 0.8,
+  inherit.aes = FALSE
+)+
+  geom_line(
+    data = data_graph_all,
+    aes(x = annee, y = lower, colour = reseau),
+    linetype = "dotted",
+    linewidth = 0.8,
+    inherit.aes = FALSE
+  ) +
+  
+  geom_line(
+    data = data_graph_all,
+    aes(x = annee, y = upper, colour = reseau),
+    linetype = "dotted",
+    linewidth = 0.8,
+    inherit.aes = FALSE
+  ) +
+  
+  scale_color_manual(
+    name = "Réseaux",
+    values = c(
+      "RCS" = "#CD6839",
+      "RRP" = "#2D0084"
+    )
+  ) +
+  
+  facet_wrap(~ libelle_indice, scales = "free_y") +
+  facetted_pos_scales(
+  y = list(
+    libelle_indice == "IPR" ~ scale_y_reverse(),
+    TRUE ~ scale_y_continuous()
+  )
+)+
+  labs(
+    title = "Tendances temporelles générales des résultats des EQR par réseau.",
+    subtitle = "Formule LMM = <i>resultat_eqr ~ annee_centree + (1 + annee_centree | code_station)</i>. Les lignes en pointillés correspondent aux intervalles de confiance des tendances. ",
+    caption="**EQR** = Ecological Quality Ratio, il s'agit d'un ratio entre le résultat observé et une valeur de référence. **<span style='color:#CD6839;'>RCS</span>**= Réseau de Contrôle de Surveillance. **<span style='color:#2D0084;'>RRP</span>**= Réseau de Référence Perenne; **I2M2**= Indice Invertébrés Multimétrique;
+**IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Le réseau <span style='color:#2D0084;'>**RRP**</span> est étudié sur la periode 2013-2024 et le réseau <span style='color:#CD6839;'>**RCS**</span> pour la période 2007-2024.",
+    x = "Année",
+    y = "Résultat EQR"
+  ) +
+  theme_bw() +
+  theme(plot.title=element_textbox_simple(size=16, 
+                                            face="bold", 
+                                            margin = margin(t=10,b = 10)),
+        plot.subtitle = ggtext::element_textbox_simple(
+          size = 14, margin = margin(b = 10)
+        ),
+        axis.title = element_text(size=14, face="bold"),
+        axis.text = element_text(size=12),
+        legend.title=element_text(size=13, face="bold"),
+        legend.text=element_text(size=13),
+        legend.position = "right",
+        legend.title.position = "top",
+        strip.text = element_text(size=14, face="bold"),
+        plot.caption = element_textbox_simple(
+          size = 12.5,
+          hjust = 0,      # 0 = aligné à gauche, 1 = à droite
+          lineheight = 1.2,
+          margin=margin(t=10, b=5),
+          fill = "white", 
+          box.color = "black",
+          width = unit(1, "npc")
+      )
+        )
+
+girafe(ggobj = Tendances_generales)
+```
+<br>
+<br>
+<br>
+
+## Table des tendances
+<br>
+```{r}
+donnees_LMM2 <- donnees_LMM %>%
+  select(-intercept_estimate, -intercept_pvalue ) %>% 
+  rename(pente=annee_estimate,
+         p_value=annee_pvalue) %>% 
+  mutate(periode= case_when(
+    reseaux=="RRP" ~ "2013-2024",
+    reseaux=="RCS" ~"2007-2024",
+    TRUE ~NA
+  )) %>% 
+  select(libelle_indice,
+         reseaux,
+         periode,
+         pente, 
+         p_value,
+         R2_marginal,
+         R2_conditionnel)
+```
+
+
+```{r out.width="70%"}
+table_recap <- donnees_LMM2 %>% 
+  mutate(reseaux=paste("Réseau ", reseaux)) %>% 
+  group_by(reseaux) %>% 
+  gt() %>% 
+  cols_hide(columns = c(reseaux)) %>% 
+  gt::tab_header(
+      title = md("**Résultats des modèles linéaires mixtes modélisant les tendances des indices par réseaux.**"),
+      subtitle = md("**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05).")) %>% 
+  gt::cols_label(
+      libelle_indice = "Indice",
+      reseaux = "Réseau",
+      periode = "Période",
+      pente = "Pente",
+      R2_marginal= "R2 marginal",
+      R2_conditionnel = "R2 conditionnel"
+    ) %>%
+  opt_row_striping() %>% 
+  tab_style(
+    style = list(
+      cell_text(weight = "bold", size = px(14)),
+      cell_fill(color = "#f7f7f7")
+    ),
+    locations = cells_row_groups()
+  ) %>% 
+  tab_style(
+    style = cell_text(weight = "bold"),  # Texte en gras
+    locations = cells_column_labels(everything()) # Cible les étiquettes de colonnes
+  ) %>% 
+  tab_style(
+      style = cell_text(weight = "bold"),
+      locations = cells_body(
+        columns = c(pente),
+        rows = p_value < 0.05
+      ))%>% 
+  tab_style(
+    style = cell_text(color = "red"),
+    locations = cells_body(
+      columns = c(pente),
+      rows = pente < 0
+    )
+  ) %>% 
+  tab_style(
+    style = cell_text(color = "#32CD32"),
+    locations = cells_body(
+      columns = c(pente),
+      rows = pente > 0
+    )
+  )
+
+table_recap
+```
+<br>
+<br>
+<br>
+
+
+# 2. Statistiques sur le nombre de stations en amélioration et en dégradation
+<br>
+```{r}
+stat_pentes_global <- pentes_LMM %>% 
+  group_by(libelle_indice, reseaux) %>% 
+  summarise(n_amelioration = sum(pente > 0, na.rm = TRUE),
+            n_deterioration= sum(pente < 0, na.rm = TRUE),
+            n_total = n_distinct(station),
+            .groups ="drop")
+
+stat_pentes_dept <- pentes_LMM %>% 
+  group_by(code_departement, libelle_indice, reseaux) %>% 
+  summarise(n_amelioration = sum(pente > 0, na.rm = TRUE),
+            n_deterioration= sum(pente < 0, na.rm = TRUE),
+            n_total = n_distinct(station),
+            .groups ="drop")
+```
+
+
+```{r message=FALSE, out.width="70%"}
+table_stat_global <- stat_pentes_global %>% 
+  mutate(reseaux=paste("Réseau ", reseaux)) %>% 
+  group_by(reseaux) %>% 
+  gt() %>% 
+  cols_hide(columns = c(reseaux)) %>% 
+  gt::tab_header(
+      title = md("**Nombre de stations dont l'état biologique s'améliore et se déteriore, par indice et par réseaux.**"),
+      subtitle = md("**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05).")) %>% 
+  gt::cols_label(
+      libelle_indice = "Indice",
+      reseaux = "Réseau",
+      n_amelioration= "Stations en amélioration", 
+      n_deterioration= "Stations en déterioration",
+      n_total="Nombre de stations total"
+    ) %>%
+  opt_row_striping() %>% 
+  tab_style(
+    style = list(
+      cell_text(weight = "bold", size = px(14)),
+      cell_fill(color = "#f7f7f7")
+    ),
+    locations = cells_row_groups()
+  ) %>% 
+  tab_style(
+    style = cell_text(weight = "bold", size=px(14)),  # Texte en gras
+    locations = cells_column_labels(everything()) # Cible les étiquettes de colonnes
+  ) %>% 
+  tab_style(
+    style = cell_text( size=px(13)),  
+    locations = cells_body()) 
+
+table_stat_global
+```
+<br>
+<br>
+<br>
+
+# 3. Visualisation spatiales des tendances temporelles des station, par indice
+<br>
+```{r}
+## Projection Lambert 93
+crs_lambert93 <- sf::st_crs(2154)
+
+## pour fond de carte
+background <-
+  rnaturalearth::ne_countries(continent = 'europe', scale = 50) %>%
+  sf::st_as_sf() %>%
+  sf::st_make_valid() %>%
+  sf::st_crop(
+    xmin = -5.4,
+    xmax = 8.6,
+    ymin = 41,
+    ymax = 52
+  ) %>%
+      sf::st_transform(crs = crs_lambert93)
+
+## pour les limites des régions/départements
+regions_FR <-
+    rnaturalearth::ne_states(country = "France", returnclass = "sf") %>%
+    sf::st_transform(crs = crs_lambert93) %>%
+    sf::st_make_valid() %>%
+    dplyr::filter(type != "Overseas département")
+
+## la normandie
+region_normandie <-
+  regions_FR %>%
+  dplyr::filter(region == 'Normandie')
+
+## bbox de la normandie pour zoomer
+bbox_normandie <-
+  region_normandie %>%
+  sf::st_buffer(dist = 20000) %>%
+  sf::st_bbox()
+
+## données hydro bassins
+district_limits <- suppressWarnings(
+  capture.output(
+    tmp <- tod::wfs_sandre(
+      url_wfs = "https://services.sandre.eaufrance.fr/geo/topage?",
+      couche = "BassinHydrographique_FXX"
+    ),
+    file = NULL
+  )
+)
+
+district_limits <- sf::st_transform(tmp, crs = crs_lambert93)
+```
+
+
+```{r}
+## couche SIG des station sur le réseau
+stations <-
+  sf::read_sf(
+    "\\\\ad.intra\\dfs\\COMMUNS\\REGIONS\\nor\\DR\\OFB\\SIG\\DR\\IG_METIER\\EAU\\PECHE\\Stations_reseaux.gpkg"
+  ) %>%
+  sf::st_transform(crs = crs_lambert93) %>%
+  dplyr::filter(Etat == "actif") %>%
+  dplyr::select(station=`Code Station SANDRE`, nom = `LIBELLE SANDRE`)
+
+```
+
+```{r}
+pentes_LMM_large<- pentes_LMM %>% 
+  pivot_wider(
+    values_from= pente,
+    names_from = libelle_indice) %>% 
+  select(-libelle_station, -code_departement)
+```
+
+```{r}
+pentes_LMM_test<- pentes_LMM %>% 
+  select(-libelle_station, -code_departement)
+```
+
+```{r}
+stations <- stations %>%
+  left_join(pentes_LMM_test) %>%
+  filter(!is.na(reseaux)) %>%
+  dplyr::mutate(
+    trend = factor(
+      case_when(
+        pente < 0  ~ "Tendance négative",
+        pente == 0 ~ "Absence de tendance",
+        pente > 0  ~ "Tendance positive",
+        TRUE       ~ NA_character_
+      ),
+      levels = c("Tendance négative", "Absence de tendance", "Tendance positive"),
+      ordered = TRUE
+    )
+  )
+
+## palettes de couleurs et symboles pour les tendances
+palette_col <- setNames(
+  c("#f94144", "#6F6F6F", "#32CD32"),
+  c("Tendance négative", "Absence de tendance", "Tendance positive")
+)
+
+symbol <-
+  setNames(
+    c(21, 23),
+    c("RCS", "RRP"))
+```
+
+```{r , fig.width=10, fig.height=10, out.width="90%", fig.align='center'}
+## fond de carte
+base_map <-
+  ggplot2::ggplot(background) +
+  ggplot2::geom_sf(fill = "grey70") +
+  ggplot2::geom_sf(
+    data = background %>%  dplyr::filter(admin == 'France'),
+    fill = 'grey95'
+  ) +
+    ggplot2::geom_sf(
+    data = regions_FR,
+    fill = NA,
+    size = 0.1,
+    col = "black"
+  ) +
+  ggplot2::geom_sf(
+    data = region_normandie,
+    fill = "white",
+    size = 0.3,
+    col = "black"
+  ) +
+  ggplot2::geom_sf(
+    data = district_limits,
+    size = 0.8,
+    col = "dodgerblue",
+    alpha = 0
+  ) +
+  ggplot2::theme(panel.background = ggplot2::element_rect(fill = "lightblue")) +
+  ggplot2::coord_sf(
+    xlim = bbox_normandie[c(1, 3)],
+    ylim = bbox_normandie[c(2, 4)],
+    expand = F
+  )
+
+## carto des stations avec tendances
+map_stations <-
+  base_map +
+  geom_sf_interactive(
+  data = stations,
+  aes(
+    size = abs(pente),
+    fill = trend,
+    shape = reseaux,
+    tooltip = paste0(
+      "Station : ", nom, "\n",
+      "Indice : ", libelle_indice, "\n",
+      "Pente : ", round(pente, 3), "\n",
+      "Tendance : ", trend
+    ),
+    data_id = station
+  ),
+  col = 'black',
+  alpha = 0.9
+) +
+  ggplot2::facet_wrap(~libelle_indice)+
+  ggplot2::scale_size_continuous("Valeur tendance", range = c(1.5, 5)) +
+  ggplot2::scale_shape_manual("Réseau", values = symbol) +
+  ggplot2::scale_fill_manual("Tendance", values = palette_col) +
+  guides(
+  fill = guide_legend(
+    order = 1,
+    override.aes = list(shape = 21, size = 4, color = "black")
+  ),
+  shape = guide_legend(
+    order = 2,
+    override.aes = list(size = 4, stroke=1)
+  ))+
+  ggplot2::coord_sf(
+    xlim = bbox_normandie[c(1, 3)],
+    ylim = bbox_normandie[c(2, 4)],
+    expand = T
+  ) +
+  ggplot2::labs(
+    title = "Carte des tendances par sites et par indices (Pentes LMM) ",
+    subtitle = "La taille des symboles est proportionnelle à la pente linéaire (LMM) des indices sur la chronique temporelle",
+    caption="**I2M2**= Indice Invertébrés Multimétrique <br>
+    **IBD**= Indice Biologique Diatomées <br> 
+    **IBMR**= Indice Biologique Macrophytes en Rivière <br> 
+    **IPR**= Indice Poisson Rivière.<br>
+    **<span style='color:#CD6839;'>RCS</span>**= Réseau de Contrôle de Surveillance.<br>
+**<span style='color:#2D0084;'>RRP</span>**= Réseau de Référence Perenne."
+  ) +
+  ggplot2::theme(
+    legend.key = ggplot2::element_rect(fill = "white"),
+    legend.position = "right",
+    legend.title = ggplot2::element_text(size = 12, face = "bold"),
+    legend.text = ggplot2::element_text(size = 12),
+    plot.title = ggtext::element_textbox_simple(size = 14, margin = margin(t=5,b=10),face = "bold"),
+    plot.subtitle = ggtext::element_textbox_simple(size = 13, margin = margin(t=5,b=10)),
+    strip.text = ggtext::element_textbox_simple(size=11, margin = margin(t=4, b=4),halign = 0.5),
+    strip.background = ggplot2::element_rect(fill = NA, color = "black"),
+    plot.caption = ggtext::element_textbox_simple(
+      size = 11,
+      hjust = 0,      # 0 = aligné à gauche, 1 = à droite
+      lineheight = 1.2,
+      margin=margin(t=10,b=5),
+      box.color = "black",
+      linewidth = 0.7,
+      width = unit(0.80, "npc")
+  )
+  )
+
+girafe(ggobj = map_stations)
+```
+<br>
+<br>
+<br>
+
+
+
+
+
+# 4. Histogrammes distribution des pentes
+<br>
+
+```{r , fig.width=9, fig.height=9, out.width="80%", fig.align='center'}
+distrib_pente_interactif <- ggplot(pentes_LMM,
+  aes(x = pente)
+) +
+  geom_histogram_interactive(
+    aes(
+      tooltip = paste0("Pente : ", round(pente, 3))
+    ),
+    color = "black",
+    fill = "steelblue"
+  ) +
+  geom_vline(xintercept = 0, color = "red", linewidth = 1, linetype=5) +
+  facet_wrap(~libelle_indice, scales="free_x") +
+  theme_bw()+
+  labs(
+    title = "Distribution des pentes des tendances temporelles des indices issues des LMM.",
+    x = "Valeur de pente",
+    y = "Nombre",
+    caption= "**I2M2**= Indice Invertébrés Multimétrique <br>
+    **IBD**= Indice Biologique Diatomées <br> 
+    **IBMR**= Indice Biologique Macrophytes en Rivière <br> 
+    **IPR**= Indice Poisson Rivière."
+  )+
+  theme(plot.title = element_textbox_simple(size=13, face="bold", margin =margin(t=5, b=5)),
+        strip.text=element_text(size=11, face="bold"),
+        plot.caption = element_textbox_simple(
+          size = 10,
+          hjust = 0,      # 0 = aligné à gauche, 1 = à droite
+          lineheight = 1.2,
+          margin=margin(t=10),
+          fill = "white", 
+          box.color = "black",
+          width = unit(0.80, "npc")
+      ))
+
+girafe(ggobj = distrib_pente_interactif)
+```
+
