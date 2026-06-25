@@ -117,7 +117,7 @@ graph_lmm <- function(data_indice,
       inherit.aes = FALSE
     ) +
     geom_point(aes(colour = type_tendance), 
-               size = 3,
+               size = 4,
                alpha = 0.7) +
     geom_line(
       data = valeurs_station_2,
@@ -143,25 +143,22 @@ graph_lmm <- function(data_indice,
       )
     )+
     labs(
-      title ="Tendance temporelle des résultats des EQR ",
-      caption="**EQR** = Ecological Quality Ratio, il s'agit d'un ratio entre le résultat observé et une valeur de référence. **I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. ",
+      caption="**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. ",
       x = "Année",
-      y = "Résultat EQR"
+      y = "Résultat indice"
     ) +
     theme_bw() +
-    theme(plot.title=element_textbox_simple(size=14, 
-                                            face="bold", 
-                                            margin = margin(t=10,b = 10)),
-          axis.title = element_text(size=11, face="bold"),
-          axis.text = element_text(size=10),
+    theme(
+          axis.title = element_text(size=15, face="bold"),
+          axis.text = element_text(size=14),
           axis.text.x = element_text(angle = 45, hjust = 1),
-          legend.title=element_text(size=11, face="bold"),
-          legend.text=element_text(size=10),
+          legend.title=element_text(size=14, face="bold"),
+          legend.text=element_text(size=13),
           legend.position = "right",
           legend.title.position = "top",
-          strip.text = element_text(size=11, face="bold"),
+          strip.text = element_text(size=14, face="bold"),
           plot.caption = element_textbox_simple(
-            size = 10,
+            size = 13,
             hjust = 0,      
             lineheight = 1.2,
             margin=margin(t=10, b=5),

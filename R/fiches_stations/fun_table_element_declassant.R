@@ -40,7 +40,7 @@ tab_element_declassant <- function (data,
     cols_hide(columns = c(code_departement, reseaux, libelle_station)) %>% 
     tab_options(
       table.width = pct(70),
-      table.font.size = px(12),
+      table.font.size = px(13),
       data_row.padding = px(5)
     ) %>% 
     tab_style(
@@ -51,10 +51,10 @@ tab_element_declassant <- function (data,
                      weight = px(2))),
       locations = cells_body()) %>% 
     tab_style(
-      style = cell_text(size = px(13), weight = "bold"),
+      style = cell_text(size = px(14), weight = "bold"),
       locations = cells_column_labels()) %>%
     tab_style(
-      style = cell_text(size = px(12)),
+      style = cell_text(size = px(13)),
       locations = cells_title(groups = "subtitle")
     ) %>% 
     opt_row_striping() %>% 
@@ -120,7 +120,7 @@ tab_element_declassant <- function (data,
       source_note = md(legende)
     ) %>% 
     tab_style(
-      style = cell_text(size = px(12)),
+      style = cell_text(size = px(13)),
       locations = cells_source_notes()
     ) 
   

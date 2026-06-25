@@ -85,8 +85,7 @@ carte_station <- function (id_station){
     ggplot2::geom_sf(
       data = cours_eau,
       fill = NA,
-      size = 0.2,
-      alpha=0.8,
+      size = 0.4,
       col = "lightblue"
     ) +
     ggplot2::geom_sf(
@@ -101,7 +100,17 @@ carte_station <- function (id_station){
       color = "#CA3C66",
       size = 1
     )+
-    ggplot2::theme(panel.background = ggplot2::element_rect(fill = "lightblue")) 
+    ggplot2::theme(panel.background = ggplot2::element_rect(fill = "lightblue")) +
+    ggspatial::annotation_north_arrow(
+      location = "topright",
+      which_north = "true",
+      style = ggspatial::north_arrow_fancy_orienteering,
+      rotation = 0
+    )+
+    ggspatial::annotation_scale(
+      location = "br",
+      width_hint = 0.2
+    )
   
   
   map_stations <-
@@ -110,7 +119,7 @@ carte_station <- function (id_station){
       data = stations,
       col = 'darkgreen',
       inherit.aes = F,
-      size=3,
+      size=4,
       alpha = 0.9,
       shape=19
     ) +  
@@ -120,7 +129,7 @@ carte_station <- function (id_station){
         X, Y,
         label = station   
       ),
-      size = 3,
+      size = 4,
       fill="lightgreen",
       color="black",
       min.segment.length = 2,
@@ -133,11 +142,13 @@ carte_station <- function (id_station){
       ylim = bbox_normandie[c(2, 4)],
       expand = F
     )+
-    ggplot2::labs(title= "Localisation générale de la station" ,
+    ggplot2::labs(
                   x=NULL,
                   y=NULL)+
-    ggplot2::theme(plot.title = ggtext::element_textbox_simple(size=14, face = "bold", margin=margin(b=10)),
-                   axis.text = element_text(size=12))
+    ggplot2::theme(
+                   axis.text = element_blank(),     
+                   axis.ticks = element_blank()     
+    )
   
     return(map_stations)
 }

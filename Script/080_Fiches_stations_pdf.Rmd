@@ -5,6 +5,7 @@ output:
     
     latex_engine: xelatex
     toc: false
+
 header-includes:
   - \usepackage{fontspec}
   - \setmainfont{Calibri}
@@ -12,17 +13,34 @@ header-includes:
   - \usepackage{fancyhdr}
   - \pagestyle{fancy}
   - \fancyhf{}
+  - \setlength{\headheight}{60pt}
+  - \geometry{bottom=3cm}
+  - \setlength{\footskip}{8pt}
+
+  - \renewcommand{\headrulewidth}{0pt}
+  - \renewcommand{\footrulewidth}{1pt}
+  - |
+    \makeatletter
+    \let\ps@plain\ps@fancy
+    \makeatother
+
   - \fancyfoot[L]{`r params$auteur`}
   - \fancyfoot[C]{\thepage}
   - \fancyfoot[R]{`r format(Sys.time(), '%d %B %Y')`}
   - |
     \fancypagestyle{firstpage}{
-    \fancyhf{}
-    \fancyhead[L]{\includegraphics[width=4cm]{logo_OFB_v2.png}}
-    \renewcommand{\headrulewidth}{0pt}
-    \renewcommand{\footrulewidth}{0pt}}
+      \fancyhf{}
+      \fancyhead[L]{\includegraphics[width=4cm]{logo_OFB_v2.png}}
+      \fancyfoot[L]{`r params$auteur`}
+      \fancyfoot[C]{\thepage}
+      \fancyfoot[R]{`r format(Sys.time(), '%d %B %Y')`}
+      \renewcommand{\headrulewidth}{0pt}
+      \renewcommand{\footrulewidth}{1pt}
+    }
+
   - \usepackage{float}
   - \usepackage{placeins}
+
 params:
   code_station: ""
   auteur: ""
@@ -102,7 +120,7 @@ b <- create_table(
 map_path <- tempfile(fileext = ".png")
 tab_path <- tempfile(fileext = ".png")
 
-ggplot2::ggsave(map_path, plot = a, width = 6, height = 4)
+ggplot2::ggsave(map_path, plot = a, width = 8, height = 6)
 gt::gtsave(b, tab_path)
 
 cat("\\begin{minipage}{0.6\\textwidth}\n")
@@ -144,7 +162,7 @@ knitr::include_graphics(tab2_path_tex)
 
 # 4. Tendance temporelle des indices d'état biologique
 
-```{r Tendances_indices, fig.width=12, fig.height=9, out.width="1\\textwidth", fig.align='center'}
+```{r Tendances_indices, fig.width=14, fig.height=10, out.width="1\\textwidth", fig.align='center'}
 graph_lmm(data=BDD_indices,
           tendances_RCS = valeurs_lmm_RCS,
           tendances_RRP = valeurs_lmm_RRP,

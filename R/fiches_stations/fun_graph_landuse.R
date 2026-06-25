@@ -15,18 +15,18 @@ landuse <- function(data,
       title = 
         "Proportion des types d'occupation des sols dans un périmetre de 2,5km autour de la station.",
       x = "",
-      y = "Proportion"
+      y = "Proportion (%)"
     ) +
     guides(fill="none")+
     ggplot2::theme(
       plot.title = ggtext::element_textbox_simple(
-        size = 12,
+        size = 14,
         face = "bold",
         margin = margin(t=10,b = 10)
       ),
-      axis.title = element_text(size=10,
+      axis.title = element_text(size=12,
                                 face="bold"),
-      axis.text.x = element_text(size=9,
+      axis.text.x = element_text(size=11,
                                  face="bold")
     )
  return(graph)

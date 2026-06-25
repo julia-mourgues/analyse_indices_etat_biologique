@@ -43,7 +43,7 @@ create_table <- function(data,
     gt() %>% 
     tab_options(
       column_labels.hidden = TRUE,     # cacher les noms de colonnes
-      table.font.size = 12,            # taille de police
+      table.font.size = 13,            # taille de police
       table.border.top.color = "black",
       table.border.bottom.color = "black",
       table.border.top.width = px(2),
