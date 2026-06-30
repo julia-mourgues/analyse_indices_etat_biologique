@@ -9,13 +9,13 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Afin de définir un premier périmètre d'étude, nous avons décidé d'étudier les stations échantillonnées par pêche électrique dans le cadre des suivis DCE en Normandie.
+Afin de définir un premier périmètre d'étude, nous avons décidé d'étudier les stations échantillonnées par pêche scientifique à l'électricité dans le cadre des suivis DCE en Normandie.
 
 # Installation
 
 ## Chargement des packages
 
-```{r message=TRUE, warning=TRUE}
+```{r chargement_packages, message=TRUE, warning=TRUE}
 library(sf)
 library(here)
 library(tidyverse)
@@ -25,7 +25,7 @@ library(stringr)
 
 ## Chargement des fonctions
 
-```{r}
+```{r chargement_fonction}
 source(here::here("R","fun_typologie.R"))
 ```
 
@@ -33,68 +33,67 @@ source(here::here("R","fun_typologie.R"))
 
 Au sein d'une même station, nous pouvons avoir plusieurs points de prélèvement car en fonction des conditions sur le terrain, il a pu être nécessaire de changer de zone de prélèvement. Ainsi dans notre liste de stations, nous pouvons avoir plusieurs points pour une station avec certains points qui sont notés comme inactifs. Afin d'avoir les données les plus récentes et un suivi plus complet, nous enlevons les stations inactives.
 
-```{r}
+```{r chargement_donnees}
 stations_peche <- sf::read_sf(
-    "\\\\ad.intra\\dfs\\COMMUNS\\REGIONS\\nor\\DR\\OFB\\SIG\\DR\\IG_METIER\\EAU\\PECHE\\Stations_reseaux.gpkg"
-  )%>%
+  "\\\\ad.intra\\dfs\\COMMUNS\\REGIONS\\nor\\DR\\OFB\\SIG\\DR\\IG_METIER\\EAU\\PECHE\\Stations_reseaux.gpkg"
+) %>%
   dplyr::filter(Etat == "actif") %>%
-  dplyr::select(Code.Station.SANDRE=`Code Station SANDRE`,
-         code_sta_pp,
-         LIBELLE.SANDRE=`LIBELLE SANDRE`,
-         geom)
+  dplyr::select(Code.Station.SANDRE = `Code Station SANDRE`,
+                code_sta_pp,
+                LIBELLE.SANDRE = `LIBELLE SANDRE`,
+                geom)
+
+#Cette base de données va nous permettre de récupérer les typologies
+Base_station_active <- read_excel(
+  "R:\\LaboHB\\UHBIO_Seulline\\4 - Référentiel station\\Base station active.xlsx",
+  sheet = "Base active"
+)
+
+load(here("Data/start_data", "resultats_clc_indices_paysages.Rdata")) #métriques paysagères calculées à partir des données Corine Land Cover 2018
+load(here("Data/start_data", "resultats_clc_stations.Rdata")) #Surface des types d'occupation du sol calculées à partir des données Corine Land Cover 2018
+load(here("Data/start_data", "stations_strahler.Rdata")) #table contenant rang de Strahler des cours d'eau et leur largeur
 ```
 
-## Sauvegarder les listes et tables sous forme de .rds
 
-```{r}
+```{r objets_stations}
 mes_stations_peche <- stations_peche$Code.Station.SANDRE
 mes_sta_pp <- stations_peche$code_sta_pp
-
-# Sauvegarde
-saveRDS(mes_stations_peche,
-        here("Data/clean_data", "mes_stations_peche.rds"))
-saveRDS(mes_sta_pp, here("Data/clean_data", "mes_sta_pp.rds")) #necessaire pour garder les points de prélèvement aspe actifs
 ```
 
-# Récupérer les typologies de nos stations via un second fichier
+# Récupérer les typologies des stations
 
-Maintenant nous allons récupérer la typologie des stations. Cette donnée est importante car elle n'est pas toujours prise en compte lors du calcul de l'EQR et les limites des classes d'état écologique peuvent donc varier selon la typologie. C'est le cas pour l'I2M2, des limites sont définies en fonction de la typologie, nous allons donc vérifier quelles limites de classes nous devons appliquer.
+Maintenant nous allons récupérer la typologie des stations. Cette donnée est importante car elle n'est pas toujours prise en compte lors du calcul de l'EQR et les limites des classes d'état écologique peuvent donc varier selon la typologie. 
 
-## Chargement des données
-
-```{r}
-#Cette base de données va nous permettre de récupérer les typologies
-Base_station_active <- read_excel("R:\\LaboHB\\UHBIO_Seulline\\4 - Référentiel station\\Base station active.xlsx", 
-    sheet = "Base active")
-```
-
-## Réarangement des données
-
-```{r}
+```{r base_active}
+#Réarrangement des données
 #Il faut ajouter un "0" devant les codes stations du fichier pour les mettre au format code sandre
 Base_station_active$CD_STATION <- as.character(Base_station_active$CD_STATION)
-Base_station_active$CD_STATION <- str_pad(Base_station_active$CD_STATION, 
-                                          width = 8, 
-                                          side = "left", 
-                                          pad = "0")
+Base_station_active$CD_STATION <- str_pad(
+  Base_station_active$CD_STATION,
+  width = 8,
+  side = "left",
+  pad = "0"
+)
 
 Base_station_active_clean <- Base_station_active %>%
   filter(CD_STATION %in% mes_stations_peche) %>%
-  dplyr::select(CD_STATION,
-         RESEAU,
-         TYPE,
-         XL93_DIAT,
-         YL93_DIAT,
-         XL93_MIV,
-         YL93_MIV,
-         XL93_MPHY,
-         YL93_MPHY) %>%
+  dplyr::select(
+    CD_STATION,
+    RESEAU,
+    TYPE,
+    XL93_DIAT,
+    YL93_DIAT,
+    XL93_MIV,
+    YL93_MIV,
+    XL93_MPHY,
+    YL93_MPHY
+  ) %>%
   rename(Typologie = TYPE)
 ```
 
-## Jointure pour faire correspondre les typologies aux stations de pêche
 
-```{r}
+```{r typologies}
+# Jointure pour faire correspondre les typologies aux stations de pêche
 stations_typologie <- stations_peche %>%
   left_join(Base_station_active_clean,
             by = c("Code.Station.SANDRE" = "CD_STATION")) %>%
@@ -103,49 +102,27 @@ stations_typologie <- stations_peche %>%
     Code.Station.SANDRE, 
     LIBELLE.SANDRE,      
     Typologie) %>%
-  mutate(
+  mutate( 
     Typologie_clean = sapply(Typologie, 
-                             nettoyage_code),
-    libelle_typologie = sapply(Typologie_clean, 
+                             nettoyage_code), #nettoyer les codes des typologies
+    libelle_typologie = sapply(Typologie_clean, #simplifier les typologies: "Tables calcaires" ou "Armoricain"
                                traduire_code)
   )
 ```
 
-## Sauvegarder les tables sous forme de .rds
-
-```{r}
-saveRDS(stations_typologie,
-        here("Data/clean_data", "stations_typologie.rds"))
-saveRDS(
-  Base_station_active_clean,
-  here("Data/clean_data", "Base_station_active_clean.rds")
-)
-```
-
-
 # Récupérer les données d'utilisation des sols pour chaque station
-
-## Chargement des données
-```{r}
-load(here("Data/start_data", "resultats_clc_indices_paysages.Rdata"))
-load(here("Data/start_data", "resultats_clc_stations.Rdata"))
-load(here("Data/start_data", "stations_strahler.Rdata"))
-```
 
 ## Modification des tables et jointures
 
-### Table contenant les rangs de strahler et les largeurs de cours d'eau
-
-```{r}
+```{r table_donnees_spatiales}
+#Table contenant les rangs de strahler et les largeurs de cours d'eau
 context_stations <- stations_typologie %>% 
   left_join(stations_strahler %>% 
               st_drop_geometry() %>% 
               dplyr::select(code_sta_pp, GIGE_Sthr, LARGEUR),
             by="code_sta_pp")
-```
 
-### Table contenant les métriques du paysage (diversité, fragmentation, equitabilité...)
-```{r}
+# Table contenant les métriques du paysage (diversité, fragmentation, equitabilité...)
 resultats_clc_indices_paysages2 <- resultats_clc_indices_paysages %>% 
   filter(clc_type=="n2",
          dist_buffer==2500) %>% 
@@ -155,15 +132,13 @@ resultats_clc_indices_paysages2 <- resultats_clc_indices_paysages %>%
 context_stations_2 <- context_stations %>% 
   left_join(resultats_clc_indices_paysages2,
             by="code_sta_pp")
-```
-
 
 #Table contenant les proportions de types de paysages
-```{r}
 resultats_clc_stations2 <- resultats_clc_stations %>% 
   filter(typologie=="n2",
          distance_m==2500)
 
+#Jointure finale
 context_stations_3 <- context_stations_2 %>% 
   left_join (resultats_clc_stations2,
              by=c("code_sta_pp", 
@@ -171,9 +146,22 @@ context_stations_3 <- context_stations_2 %>%
                   "clc_type"="typologie"))
 ```
 
-## Sauvegarder la table
-```{r}
+# Sauvegarder les tables
+```{r sauvegarde_tables}
+saveRDS(mes_stations_peche,
+        here("Data/clean_data", "mes_stations_peche.rds"))
+saveRDS(mes_sta_pp, here("Data/clean_data", "mes_sta_pp.rds")) #nécessaire pour garder les points de prélèvement aspe actifs
+
+
+saveRDS(stations_typologie,
+        here("Data/clean_data", "stations_typologie.rds"))
+saveRDS(
+  Base_station_active_clean,
+  here("Data/clean_data", "Base_station_active_clean.rds")
+)
+
 saveRDS(context_stations_3,
         here("Data/raw_data", "context_stations.rds"))
 ```
+
 

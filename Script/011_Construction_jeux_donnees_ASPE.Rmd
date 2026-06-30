@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Ce script permet de construire le jeu de données rassemblant les informations de pêche.
+Ce script permet de construire le jeu de données rassemblant les informations de pêche scientifique à l'électricité.
 
 # Installation
 
@@ -181,14 +181,6 @@ aspe_nor <- aspe_nor %>%
   distinct()
 ```
 
-```{r}
-
-# Vérifier que tous les noms ont été changés
-table(aspe_nor$operateur_peche)
-# Vérifier que tous les noms ont été changés
-table(aspe_nor$obj_libelle)
-```
-
 
 Récupérer et ajouter les coordonnées des points de prélèvement
 
@@ -209,6 +201,7 @@ aspe_nor <- aspe_nor %>%
 Certaines stations RRP sont considérées ont été attribuées à un autre réseaux selon les prélèvements, donc on défini toutes nos stations RRP.
 Nous avons choisie de retirer les stations appartenant au réseau de pêche RHP car trop peu de données étaient disponibles.
 ```{r}
+#Compter le nombre d'appartenances réseaux par station
 aspe_reseaux_stations <- aspe_nor %>% 
   group_by(sta_code_sandre) %>% 
   summarise(
@@ -268,6 +261,7 @@ aspe_nor2 <- aspe_nor %>%
 aspe_stations<-aspe_nor2%>%
   select(dept,
          sta_code_sandre,
+         code_sta_pp,
          sta_libelle_sandre,
          sta_coordonnees_x,
          sta_coordonnees_y,
@@ -400,7 +394,7 @@ aspe_taxo <- aspe_nor2 %>%
 # Sauvegarder sous forme de .Data
 
 ```{r}
-save(aspe_nor,
+save(
      aspe_stations,
      aspe_indices,
      aspe_metriques,

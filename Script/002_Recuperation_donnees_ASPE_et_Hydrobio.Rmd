@@ -13,7 +13,7 @@ Ce script permet de récupérer les données Aspe depuis la base de données de 
 
 # Charger les packages
 
-```{r message=FALSE, warning=FALSE}
+```{r chargement_packages, message=FALSE, warning=FALSE}
 library(aspe)
 library(here)
 library(hubeau) #fournit les fonctions pour appeler l'API
@@ -43,6 +43,8 @@ imp_importer_aspe_idg(aspe_db)
 export_tables_rdata( "../Data/raw_data")
 ```
 
+
+
 # Récupérer les données Hydrobio
 
 L'API hydrobiologie développée par Hub'Eau donne accès à trois tables provenant de la base de données NAIADES:
@@ -66,8 +68,7 @@ source(here::here("R","fun_get_data_hydrobio.R"))
 ### Chargement des données
 
 ```{r}
-mes_stations_peche<- readRDS(here("Data/clean_data", 
-                                  "mes_stations_peche.rds")) #contient les 92 stations qui nous intéressent
+mes_stations_peche <- readRDS(here("Data/clean_data", "mes_stations_peche.rds")) #contient les 92 stations qui nous intéressent
 ```
 
 ### Définition des paramètres nécessaires au fonctionnement des fonctions

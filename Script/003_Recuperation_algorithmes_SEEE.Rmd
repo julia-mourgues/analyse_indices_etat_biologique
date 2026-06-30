@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Ce script permet de récupérer les algorithmes du SEEE et de calculer les indices d'état biologiques ainsi que leurs métriques.
+Ce script permet de récupérer les algorithmes du Système d'évaluation de l'état des eaux (EEE, https://seee.eaufrance.fr/) et de calculer les indices d'état biologiques ainsi que leurs métriques.
 
 # Installation
 ##Chargement des packages
@@ -24,7 +24,9 @@ library(here)
 ## Chargement des données
 ```{r}
 load(here("Data/raw_data", "hydrobio_data.rda"))
-Base_station_active <- readRDS(here("Data/clean_data", "Base_station_active_clean.rds")) #contient des informations supplémentaires du labo Hydrobio
+Base_station_active <- readRDS(here("Data/clean_data", 
+                                    "Base_station_active_clean.rds")) #contient des informations supplémentaires du labo Hydrobio
+stations_typologie <- readRDS("~/Git/analyse_indices_etat_biologique/Data/clean_data/stations_typologie.rds")
 ```
 
 # Récupérer les algorithmes SEEE
@@ -107,7 +109,7 @@ stations_seee <- stations_clean %>%
 
 ## 2.Données indices
 
-Les données sont caractérisées par un niveau de conformité. Ici nous choisissons de travailler sur les données "correctes" et "non définissables", qui correspondent aux code "1" et "0".
+Les données sont caractérisées par un niveau de qualité. Ici nous choisissons de travailler sur les données "correctes" et "non définissables", qui correspondent aux code "1" et "0".
 
 ```{r}
 indices_clean <- indices_hydrobio %>%
@@ -214,7 +216,10 @@ etat_bio <- etat_bio %>%
     TRUE ~ NA_character_
   ),
   eqr_indice = pmin(eqr_indice, 1)) %>% 
-  ungroup()
+  ungroup() %>% 
+  left_join(stations_typologie %>%  
+              dplyr::select(code_sta_pp, Code.Station.SANDRE),
+            by=c("code_station_hydrobio"="Code.Station.SANDRE"))
 ```
 
 
@@ -258,6 +263,7 @@ Structure des fichiers :
 - REFERENCE : valeur de référence pour le calcul de l'EQR
 - MINIMUM : valeur minimale pour le calcul de l'EQR (IBD uniquement)
 - TRES_BON, BON, MOYEN, MEDIOCRE, MAUVAIS : seuils de classification
+
 ```{r}
 valeurs_seuils <- fichiers_parametres  %>% 
   purrr::map(
@@ -449,7 +455,10 @@ valeurs_seuils_indices <- valeurs_seuils_stations %>%
               ungroup() %>% 
               dplyr::select(code_station_hydrobio, libelle_station_hydrobio) %>% 
               distinct(code_station_hydrobio, libelle_station_hydrobio),
-            by=c("CODE_STATION"="code_station_hydrobio"))
+            by=c("CODE_STATION"="code_station_hydrobio")) %>% 
+  left_join(stations_typologie %>%  
+              dplyr::select(code_sta_pp, Code.Station.SANDRE),
+            by=c("CODE_STATION"="Code.Station.SANDRE"))
 ```
 
 ```{r}
