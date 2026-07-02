@@ -15,5 +15,4 @@
 Data/raw_data/
 Data/clean_data/*.rds
 Data/clean_data/*.rda
-R/algo_seee/
 .Rproj.user

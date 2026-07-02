@@ -1,0 +1,35 @@
+CHANGELOG I2M2
+
+Version 1.0.6
+  Ajout d'une étape de validation testant que les CODE_OPERATION sont bien des combinaisons uniques de CODE_STATION et de DATE
+  Filtre les données d'entrée pour ne conserver que les abondances strictement positives (enlève toutes les abondances de 0)
+
+Version 1.0.5
+  Mise à jour du tableau des types de cours d'eau
+  
+Version 1.0.4
+	refactorisation du code pour améliorer les performances
+	changement des noms de champ dans des fichiers de paramètre
+	ajout d'une sortie optionnelle avec les valeurs brutes des métriques constitutives
+	correction d'un bug dans la redistribution des effectifs au moment de l'harmonisation des listes faunistiques
+	ajout du fichier CHANGELOG
+	
+Version 1.0.3
+	modification du calcul du nombre de taxons contributifs et de leur proportion
+	correction d'un bug dans la redistribution des effectifs au moment de l'harmonisation des listes faunistiques
+
+Version 1.0.2
+	gestion des champs CODE_OPERATION et CODE_STATION comme chaines de caractères
+	passage des dates au format aaaa-mm-jj
+	ajout d'un champ COMMENTAIRES avec la liste des taxons non contributifs
+	ajout du nombre de taxons contributifs en sortie
+	modification de la méthode de redistribution des effectifs au moment de l'harmonisation des listes faunistiques
+
+Version 1.0.1
+	renommage de fichiers de configuration
+	ajout des codes phases 1, 2 et 3 en plus de A, B et C
+	traitement des opérations où l'indice est non calculable
+	
+Version 1.0.0
+	Première version
+	
