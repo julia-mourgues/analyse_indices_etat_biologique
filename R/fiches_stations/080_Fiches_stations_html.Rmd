@@ -32,7 +32,6 @@ if (knitr::is_html_output()) {
     style = 'position:absolute; top:0; right:0; width:180px;'
   )
 }
-
 ```
 
 

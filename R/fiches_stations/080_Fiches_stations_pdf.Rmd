@@ -33,7 +33,7 @@ header-includes:
   - |
     \fancypagestyle{firstpage}{
       \fancyhf{}
-      \fancyhead[L]{\includegraphics[width=4cm]{logo_OFB_v2_2.png}}
+      \fancyhead[L]{\includegraphics[width=4cm]{css/logo_OFB_v2.png}}
       \setlength{\headheight}{60pt}
       \fancyfoot[L]{`r params$auteur`}
       \fancyfoot[C]{\thepage}
