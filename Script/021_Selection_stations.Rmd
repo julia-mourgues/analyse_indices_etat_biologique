@@ -27,10 +27,10 @@ library(here)
 load(here("Data/clean_data", "aspe_clean_data.rda"))
 load(here("Data/clean_data", "hydrobio_clean_data.rda"))
 mes_stations<- readRDS(here("Data/clean_data", "mes_stations_sans_RHP.rds")) 
-BDD_info_stations<- readRDS(here("Data/clean_data","BDD_info_stations.rds")) 
+load(here("Data/clean_data", "BDD_etude.rda"))
 ```
 
-# Select ion 1: en fonction de la distance station_aspe - station_hydrobio
+# Selection 1: en fonction de la distance station_aspe - station_hydrobio
 
 Les stations d'hydrobiologie et aspe sont échantillonnées de façon indépendantes, par des opérateurs différents et à des moments différents. Ainsi au sein d'une même station, les points de prélèvements peuvent être espacés de plusieurs kilomètres. Or on ne peut pas comparer des indices alors qu'ils ne proviennent pas de la même zone échantillonnée. Il est donc nécessaire de définir la distance maximale acceptée entre deux points d'une même station.
 
@@ -110,16 +110,14 @@ stations_df <- stations %>%
 #Pivot : chaque support devient une colonne de géométrie
 stations_wide <- stations_df %>%
   select(code_station, libelle_station, code_support, geometry_col) %>%
-  pivot_wider(
-    names_from = code_support,
-    values_from = geometry_col,
-    names_prefix = "geom_"
-  )
+  pivot_wider(names_from = code_support,
+              values_from = geometry_col,
+              names_prefix = "geom_")
 
 #On reconstruit les colonnes géométriques en sfc
 stations_wide <- stations_wide %>%
   mutate(
-    geom_4  = st_sfc(purrr::map(geom_4,  ~ .x[[1]]),  crs = st_crs(stations)),
+    geom_4  = st_sfc(purrr::map(geom_4, ~ .x[[1]]), crs = st_crs(stations)),
     geom_10 = st_sfc(purrr::map(geom_10, ~ .x[[1]]), crs = st_crs(stations)),
     geom_13 = st_sfc(purrr::map(geom_13, ~ .x[[1]]), crs = st_crs(stations)),
     geom_27 = st_sfc(purrr::map(geom_27, ~ .x[[1]]), crs = st_crs(stations))
@@ -129,9 +127,15 @@ stations_wide <- stations_wide %>%
 #Créer de nouvelle svariables contenant la distance entre les coordonnées du point poisson et celles des points hydrobio pour chaque station.
 distances_pop <- stations_wide %>%
   mutate(
-    dist_4_10 = map2_dbl(geom_4, geom_10, ~ round(as.numeric(st_distance(.x, .y)) / 1000, 3)),
-    dist_4_13 = map2_dbl(geom_4, geom_13, ~ round(as.numeric(st_distance(.x, .y)) / 1000, 3)),
-    dist_4_27 = map2_dbl(geom_4, geom_27, ~ round(as.numeric(st_distance(.x, .y)) / 1000, 3))
+    dist_4_10 = map2_dbl(geom_4, geom_10, ~ round(as.numeric(st_distance(
+      .x, .y
+    )) / 1000, 3)),
+    dist_4_13 = map2_dbl(geom_4, geom_13, ~ round(as.numeric(st_distance(
+      .x, .y
+    )) / 1000, 3)),
+    dist_4_27 = map2_dbl(geom_4, geom_27, ~ round(as.numeric(st_distance(
+      .x, .y
+    )) / 1000, 3))
   )
 ```
 
@@ -154,10 +158,8 @@ selection_station_distance<- distances_filtrees$code_station
 
 # Sélection 2: en fonction du nombre d’occurrences - qualifications non définissable et correcte
 
-## Chargement des données
 
 ```{r}
-BDD_indices <- readRDS(here("Data/clean_data", "BDD_indices.rds"))
 min_occurrence <- 4
 ```
 
@@ -189,11 +191,24 @@ selection_stations_indef <- nb_indices_indef %>%
 
 Pour 4 occurrences min et les données correctes + non définissables avec distance max= 5km, on a 77 stations
 
-Enfin, pour certaines stations échantillonnées l'IPR n'est pas applicable, nous allons donc créer un objet contenant les codes de ces stations afin de les retirer du jeux de données
-```{r}
-IPR_non_applicable <- c("03254770", "03255580", "03254370","03272685","03217400", "03205000", "03174000","03217000","03216000") 
+# Sélection 3: Condition d'application des indices
 
-selection_stations_indef <- selection_stations_indef %>% 
+Enfin, pour certaines stations échantillonnées l'IPR n'est pas applicable, nous allons donc créer un objet contenant les codes de ces stations afin de les retirer du jeux de données
+
+```{r}
+IPR_non_applicable <- c(
+  "03254770",
+  "03255580",
+  "03254370",
+  "03272685",
+  "03217400",
+  "03205000",
+  "03174000",
+  "03217000",
+  "03216000"
+)
+
+selection_stations_indef <- selection_stations_indef %>%
   filter(!code_station %in% IPR_non_applicable)
 ```
 

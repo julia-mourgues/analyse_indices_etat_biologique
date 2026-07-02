@@ -1,5 +1,5 @@
 ---
-title: "table donnees LMM"
+title: "Tables rassemblant les données des Modèles Linéaires Mixtes"
 author: "Julia"
 date: "2026-05-05"
 output: html_document
@@ -21,7 +21,9 @@ library(gt)
 ```
 
 ## Chargement des données
+On va rassembler les données issues des lmm des différents indicesvet qui seront utilisées pour la création des fiches stations
 ```{r}
+#table contenant les tendances régionales + données associées (p_value, R2...)
 fichiers_donnees <- list.files(
   path = "../Data/clean_data/Models",         
   pattern = "^donnees_models.*\\.rds$",
@@ -29,9 +31,9 @@ fichiers_donnees <- list.files(
 )
 
 liste_tables_donnees <- lapply(fichiers_donnees, readRDS)
-
 donnees_LMM <- bind_rows(liste_tables_donnees) 
 
+#table contenant les pentes stationnelles pour chaque indice
 fichiers_pentes <- list.files(
   path = "../Data/clean_data/Models",         
   pattern = "^pentes_LMM.*\\.rds$",
@@ -39,14 +41,9 @@ fichiers_pentes <- list.files(
 )
 
 liste_tables_pentes <- lapply(fichiers_pentes, readRDS)
-
 pentes_LMM <- bind_rows(liste_tables_pentes)
-```
 
-
-
-On en profite pour rassembler les données issues des lmm et qui seront utilisées pour la création des fiches stations
-```{r}
+#données pour tracer les tendances stationnelles (pente + intercept + valeur estimée)
 fichiers_lignes <- list.files(
   path = "../Data/clean_data/Models",         
   pattern = "^lines_by_station.*\\.rds$",
@@ -56,6 +53,7 @@ fichiers_lignes <- list.files(
 liste_tables_lignes <- lapply(fichiers_lignes, readRDS)
 valeurs_lmm_station <- bind_rows(liste_tables_lignes) 
 
+#données pour tracer les tendances du réseau RCS (pente + intercept + valeur estimée)
 fichiers_graph_RCS <- list.files(
   path = "../Data/clean_data/Models",         
   pattern = "^data_graph_RCS.*\\.rds$",
@@ -65,6 +63,7 @@ fichiers_graph_RCS <- list.files(
 liste_tables_graph_RCS <- lapply(fichiers_graph_RCS, readRDS)
 valeurs_lmm_RCS <- bind_rows(liste_tables_graph_RCS)
 
+#données pour tracer les tendances du réseau RRP (pente + intercept + valeur estimée)
 fichiers_graph_RRP <- list.files(
   path = "../Data/clean_data/Models",         
   pattern = "^data_graph_RRP.*\\.rds$",
@@ -77,6 +76,7 @@ valeurs_lmm_RRP <- bind_rows(liste_tables_graph_RRP)
 
 
 ```{r}
+#sauvegarde sous forme de Rdata
 save(valeurs_lmm_station,
      valeurs_lmm_RCS,
      valeurs_lmm_RRP,
@@ -109,53 +109,47 @@ donnees_LMM2 <- donnees_LMM %>%
 
 # Tableau contenant les résultats globaux des LMM par indices et réseaux
 ```{r}
-table_recap <- donnees_LMM2 %>% 
-  mutate(reseaux=paste("Réseau ", reseaux)) %>% 
-  group_by(reseaux) %>% 
-  gt() %>% 
-  cols_hide(columns = c(reseaux)) %>% 
+table_recap <- donnees_LMM2 %>%
+  mutate(reseaux = paste("Réseau ", reseaux)) %>%
+  group_by(reseaux) %>%
+  gt() %>%
+  cols_hide(columns = c(reseaux)) %>%
   gt::tab_header(
-      title = md("**Résultats des modèles linéaires mixtes modélisant les tendances des indices par réseaux.**"),
-      subtitle = md("**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05).")) %>% 
-  gt::cols_label(
-      libelle_indice = "Indice",
-      reseaux = "Réseau",
-      periode = "Période",
-      pente = "Pente",
-      R2_marginal= "R2 marginal",
-      R2_conditionnel = "R2 conditionnel"
-    ) %>%
-  opt_row_striping() %>% 
-  tab_style(
-    style = list(
-      cell_text(weight = "bold", size = px(14)),
-      cell_fill(color = "#f7f7f7")
+    title = md(
+      "**Résultats des modèles linéaires mixtes modélisant les tendances des indices par réseaux.**"
     ),
-    locations = cells_row_groups()
-  ) %>% 
-  tab_style(
-    style = cell_text(weight = "bold"),  # Texte en gras
-    locations = cells_column_labels(everything()) # Cible les étiquettes de colonnes
-  ) %>% 
-  tab_style(
-      style = cell_text(weight = "bold"),
-      locations = cells_body(
-        columns = c(pente),
-        rows = p_value < 0.05
-      ))%>% 
-  tab_style(
-    style = cell_text(color = "red"),
-    locations = cells_body(
-      columns = c(pente),
-      rows = pente < 0
+    subtitle = md(
+      "**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05)."
     )
-  ) %>% 
+  ) %>%
+  gt::cols_label(
+    libelle_indice = "Indice",
+    reseaux = "Réseau",
+    periode = "Période",
+    pente = "Pente",
+    R2_marginal = "R2 marginal",
+    R2_conditionnel = "R2 conditionnel"
+  ) %>%
+  opt_row_striping() %>%
+  tab_style(style = list(
+    cell_text(weight = "bold", size = px(14)),
+    cell_fill(color = "#f7f7f7")
+  ),
+  locations = cells_row_groups()) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    # Texte en gras
+    locations = cells_column_labels(everything()) # Cible les étiquettes de colonnes
+  ) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(columns = c(pente), rows = p_value < 0.05)
+  ) %>%
+  tab_style(style = cell_text(color = "red"),
+            locations = cells_body(columns = c(pente), rows = pente < 0)) %>%
   tab_style(
     style = cell_text(color = "#32CD32"),
-    locations = cells_body(
-      columns = c(pente),
-      rows = pente > 0
-    )
+    locations = cells_body(columns = c(pente), rows = pente > 0)
   )
 
 table_recap
@@ -182,78 +176,84 @@ stat_pentes_dept <- pentes_LMM %>%
 
 
 ```{r}
-table_stat_global <- stat_pentes_global %>% 
-  mutate(reseaux=paste("Réseau ", reseaux)) %>% 
-  group_by(reseaux) %>% 
-  gt() %>% 
-  cols_hide(columns = c(reseaux)) %>% 
+table_stat_global <- stat_pentes_global %>%
+  mutate(reseaux = paste("Réseau ", reseaux)) %>%
+  group_by(reseaux) %>%
+  gt() %>%
+  cols_hide(columns = c(reseaux)) %>%
   gt::tab_header(
-      title = md("**Nombre de stations dont l'état biologique s'améliore et se déteriore, par indice et par réseaux.**"),
-      subtitle = md("**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05).")) %>% 
-  gt::cols_label(
-      libelle_indice = "Indice",
-      reseaux = "Réseau",
-      n_amelioration= "Stations en amélioration", 
-      n_deterioration= "Stations en déterioration",
-      n_total="Nombre de stations total"
-    ) %>%
-  opt_row_striping() %>% 
-  tab_style(
-    style = list(
-      cell_text(weight = "bold", size = px(14)),
-      cell_fill(color = "#f7f7f7")
+    title = md(
+      "**Nombre de stations dont l'état biologique s'améliore et se déteriore, par indice et par réseaux.**"
     ),
-    locations = cells_row_groups()
-  ) %>% 
+    subtitle = md(
+      "**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05)."
+    )
+  ) %>%
+  gt::cols_label(
+    libelle_indice = "Indice",
+    reseaux = "Réseau",
+    n_amelioration = "Stations en amélioration",
+    n_deterioration = "Stations en déterioration",
+    n_total = "Nombre de stations total"
+  ) %>%
+  opt_row_striping() %>%
+  tab_style(style = list(
+    cell_text(weight = "bold", size = px(14)),
+    cell_fill(color = "#f7f7f7")
+  ),
+  locations = cells_row_groups()) %>%
   tab_style(
-    style = cell_text(weight = "bold", size=px(14)),  # Texte en gras
+    style = cell_text(weight = "bold", size = px(14)),
+    # Texte en gras
     locations = cells_column_labels(everything()) # Cible les étiquettes de colonnes
-  ) %>% 
-  tab_style(
-    style = cell_text( size=px(13)),  
-    locations = cells_body()) 
+  ) %>%
+  tab_style(style = cell_text(size = px(13)), locations = cells_body())
 
 table_stat_global
 gtsave(table_stat_global, filename = "../Output/1_Tendance_indice/03_LMM/nombre_stations_amelioration.pdf")
 
-table_stat_dept <- stat_pentes_dept %>% 
-  mutate(code_departement= paste("Département ",code_departement),
-         reseaux=paste("Réseau ", reseaux)) %>% 
-  group_by(code_departement,reseaux) %>% 
-  gt() %>% 
-  cols_hide(columns = c(code_departement, reseaux)) %>% 
+table_stat_dept <- stat_pentes_dept %>%
+  mutate(
+    code_departement = paste("Département ", code_departement),
+    reseaux = paste("Réseau ", reseaux)
+  ) %>%
+  group_by(code_departement, reseaux) %>%
+  gt() %>%
+  cols_hide(columns = c(code_departement, reseaux)) %>%
   gt::tab_header(
-      title = md("**Nombre de stations dont l'état biologique s'améliore et se déteriore, par département, réseaux et indice.**"),
-      subtitle = md("**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05).")) %>% 
-  gt::cols_label(
-      libelle_indice = "Indice",
-      reseaux = "Réseau",
-      n_amelioration= "Stations en amélioration", 
-      n_deterioration= "Stations en déterioration",
-      n_total="Nombre de stations total"
-    ) %>%
-  opt_row_striping() %>% 
-  tab_style(
-    style = list(
-      cell_text(weight = "bold", size = px(14)),
-      cell_fill(color = "#f7f7f7")
+    title = md(
+      "**Nombre de stations dont l'état biologique s'améliore et se déteriore, par département, réseaux et indice.**"
     ),
-    locations = cells_row_groups()
-  ) %>% 
+    subtitle = md(
+      "**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05)."
+    )
+  ) %>%
+  gt::cols_label(
+    libelle_indice = "Indice",
+    reseaux = "Réseau",
+    n_amelioration = "Stations en amélioration",
+    n_deterioration = "Stations en déterioration",
+    n_total = "Nombre de stations total"
+  ) %>%
+  opt_row_striping() %>%
+  tab_style(style = list(
+    cell_text(weight = "bold", size = px(14)),
+    cell_fill(color = "#f7f7f7")
+  ),
+  locations = cells_row_groups()) %>%
   tab_style(
-    style = cell_text(weight = "bold", size=px(14)),  # Texte en gras
+    style = cell_text(weight = "bold", size = px(14)),
+    # Texte en gras
     locations = cells_column_labels(everything()) # Cible les étiquettes de colonnes
-  ) %>% 
-  tab_style(
-    style = cell_text( size=px(13)),  
-    locations = cells_body()) 
+  ) %>%
+  tab_style(style = cell_text(size = px(13)), locations = cells_body())
 
 table_stat_dept
 gtsave(table_stat_dept, filename = "../Output/1_Tendance_indice/03_LMM/nombre_stations_amelioration_dept.pdf")
 ```
 
 
-# Carto avec les tendances des stations
+# Répartition spatiale des tendances stationnelles
 
 ```{r}
 ## Projection Lambert 93
@@ -352,11 +352,9 @@ symbol <-
 base_map <-
   ggplot2::ggplot(background) +
   ggplot2::geom_sf(fill = "grey70") +
+  ggplot2::geom_sf(data = background %>%  dplyr::filter(admin == 'France'),
+                   fill = 'grey95') +
   ggplot2::geom_sf(
-    data = background %>%  dplyr::filter(admin == 'France'),
-    fill = 'grey95'
-  ) +
-    ggplot2::geom_sf(
     data = regions_FR,
     fill = NA,
     size = 0.1,
@@ -375,11 +373,9 @@ base_map <-
     alpha = 0
   ) +
   ggplot2::theme(panel.background = ggplot2::element_rect(fill = "lightblue")) +
-  ggplot2::coord_sf(
-    xlim = bbox_normandie[c(1, 3)],
-    ylim = bbox_normandie[c(2, 4)],
-    expand = F
-  )
+  ggplot2::coord_sf(xlim = bbox_normandie[c(1, 3)],
+                    ylim = bbox_normandie[c(2, 4)],
+                    expand = F)
 
 ## carto des stations avec tendances
 map_stations <-
@@ -395,49 +391,59 @@ map_stations <-
     inherit.aes = F,
     alpha = 0.9
   ) +
-  ggplot2::facet_wrap(~libelle_indice)+
+  ggplot2::facet_wrap( ~ libelle_indice) +
   ggplot2::scale_size_continuous("Valeur tendance", range = c(1.5, 5)) +
   ggplot2::scale_shape_manual("Réseau", values = symbol) +
   ggplot2::scale_fill_manual("Tendance", values = palette_col) +
   guides(
-  fill = guide_legend(
-    order = 1,
-    override.aes = list(shape = 21, size = 4, color = "black")
-  ),
-  shape = guide_legend(
-    order = 2,
-    override.aes = list(size = 4, stroke=1)
-  ))+
-  ggplot2::coord_sf(
-    xlim = bbox_normandie[c(1, 3)],
-    ylim = bbox_normandie[c(2, 4)],
-    expand = T
+    fill = guide_legend(
+      order = 1,
+      override.aes = list(
+        shape = 21,
+        size = 4,
+        color = "black"
+      )
+    ),
+    shape = guide_legend(order = 2, override.aes = list(size = 4, stroke =
+                                                          1))
   ) +
-  ggplot2::labs(
-    title = "Carte des tendances par sites et par indices (Pentes LMM) "
-  ) +
+  ggplot2::coord_sf(xlim = bbox_normandie[c(1, 3)],
+                    ylim = bbox_normandie[c(2, 4)],
+                    expand = T) +
+  ggplot2::labs(title = "Carte des tendances par sites et par indices (Pentes LMM) ") +
   ggplot2::theme(
     legend.key = ggplot2::element_rect(fill = "white"),
     legend.position = "right",
     legend.title = ggplot2::element_text(size = 12, face = "bold"),
     legend.text = ggplot2::element_text(size = 12),
-    plot.title = ggtext::element_textbox_simple(size = 14, margin = margin(t=5,b=5),face = "bold"),
-    plot.subtitle = ggtext::element_textbox_simple(size = 13, margin = margin(t=5,b=5)),
-    strip.text = ggtext::element_textbox_simple(size=11, margin = margin(t=4, b=4),halign = 0.5),
+    plot.title = ggtext::element_textbox_simple(
+      size = 14,
+      margin = margin(t = 5, b = 5),
+      face = "bold"
+    ),
+    plot.subtitle = ggtext::element_textbox_simple(size = 13, 
+                                                   margin = margin(t =5, b = 5)),
+    strip.text = ggtext::element_textbox_simple(
+      size = 11,
+      margin = margin(t = 4, b = 4),
+      halign = 0.5
+    ),
     strip.background = ggplot2::element_rect(fill = NA, color = "black"),
     plot.caption = ggtext::element_textbox_simple(
       size = 11,
-      hjust = 0,      # 0 = aligné à gauche, 1 = à droite
+      hjust = 0,
+      # 0 = aligné à gauche, 1 = à droite
       lineheight = 1.2,
-      margin=margin(t=10,b=5),
+      margin = margin(t = 10, b = 5),
       box.color = "black",
       linewidth = 0.7,
       width = unit(0.80, "npc")
-  )
+    )
   )
 
 map_stations
 ```
+
 ```{r}
 ggplot2::ggsave(
   filename = "../Output/1_Tendance_indice/03_LMM/carte_tendance_stations.jpg",
@@ -472,82 +478,74 @@ pentes_pct <- pentes_LMM %>%
 ```{r}
 pentes_LMM2 <- pentes_LMM %>%
   mutate(
-    reseaux = factor(
-      reseaux,
-      levels = c("RRP", "RCS"),
-      ordered = TRUE
-    ),
-    libelle_indice= case_when(
-      libelle_indice=="IBD" ~"pente_IBD",
-      libelle_indice=="IBMR" ~"pente_IBMR",
-      libelle_indice=="I2M2" ~"pente_I2M2",
-      libelle_indice=="IPR" ~"pente_IPR",
-      TRUE~NA
+    reseaux = factor(reseaux, levels = c("RRP", "RCS"), ordered = TRUE),
+    libelle_indice = case_when(
+      libelle_indice == "IBD" ~ "pente_IBD",
+      libelle_indice == "IBMR" ~ "pente_IBMR",
+      libelle_indice == "I2M2" ~ "pente_I2M2",
+      libelle_indice == "IPR" ~ "pente_IPR",
+      TRUE ~ NA
     )
   )
 
 med_pentes <- pentes_LMM2 %>%
   group_by(libelle_indice, reseaux) %>%
-  summarise(moyenne = mean(pente, na.rm = TRUE),
-            .groups = "drop") 
+  summarise(moyenne = mean(pente, na.rm = TRUE), .groups = "drop")
 style <- c(1, 2)
 
-distrib_pente <- ggplot(pentes_LMM2,
-                              aes(x = pente, fill=reseaux)) +
-  geom_histogram(show.legend = TRUE, color = "black", alpha=0.6) +
-  scale_fill_manual(
-    name = "Réseaux",
-    values = c(
-      "RCS" = "#CD6839",
-      "RRP" = "#2D0084"
-    )
-  ) +
+distrib_pente <- ggplot(pentes_LMM2, aes(x = pente, fill = reseaux)) +
+  geom_histogram(show.legend = TRUE,
+                 color = "black",
+                 alpha = 0.6) +
+  scale_fill_manual(name = "Réseaux",
+                    values = c("RCS" = "#CD6839", "RRP" = "#2D0084")) +
   geom_vline(
     data = med_pentes,
-    aes(xintercept = moyenne, 
-        color= "Moyenne",
-        linetype = "Moyenne"),
-    linewidth = 1 
-  ) +
-  geom_vline(
-    
-    aes(xintercept = 0,color = "Zéro",
-        linetype = "Zéro"),
+    aes(
+      xintercept = moyenne,
+      color = "Moyenne",
+      linetype = "Moyenne"
+    ),
     linewidth = 1
-  )+
-  scale_color_manual(
-  name = "Références",
-  values = c(
-    "Zéro" = "darkgrey",
-    "Moyenne" = "red"
-  )
-)+
-  scale_linetype_manual(
-  name = "Références",
-  values = c("Zéro" = "solid", "Moyenne" = "dashed")
-)+
+  ) +
+  geom_vline(aes(
+    xintercept = 0,
+    color = "Zéro",
+    linetype = "Zéro"
+  ), linewidth = 1) +
+  scale_color_manual(name = "Références",
+                     values = c("Zéro" = "darkgrey", "Moyenne" = "red")) +
+  scale_linetype_manual(name = "Références",
+                        values = c("Zéro" = "solid", "Moyenne" = "dashed")) +
   guides(
     fill = guide_legend(order = 1),
-    color = guide_legend(order = 2, override.aes = list(fill = "transparent")),
-    linetype = guide_legend(order = 2, override.aes = list(fill = "transparent"))
+    color = guide_legend(
+      order = 2,
+      override.aes = list(fill = "transparent")
+    ),
+    linetype = guide_legend(
+      order = 2,
+      override.aes = list(fill = "transparent")
+    )
+    
+  ) +
   
-  )+
-
-  facet_grid( reseaux ~ libelle_indice, scales="free_y") +
+  facet_grid(reseaux ~ libelle_indice, scales = "free_y") +
   theme_bw() +
-  labs(
-    title = "Distribution des pentes des tendances temporelles des indices issues des LMM.",
-    x = "Valeur de pente",
-    y = "Nombre"
-  )+
-  theme(plot.title = element_textbox_simple(size=13, face="bold", margin =margin(t=5, b=5)),
-        strip.text=element_text(size=13, face="bold"),
-        strip.text.y = element_blank(),
-        legend.title=element_text(size=13, face="bold"),
-        legend.text=element_text(size=13),
-        legend.key = element_rect(fill = NA, color = NA),
-        legend.background = element_blank() 
-      )
+  labs(title = "Distribution des pentes des tendances temporelles des indices issues des LMM.", x = "Valeur de pente", y = "Nombre") +
+  theme(
+    plot.title = element_textbox_simple(
+      size = 13,
+      face = "bold",
+      margin = margin(t = 5, b = 5)
+    ),
+    strip.text = element_text(size = 13, face = "bold"),
+    strip.text.y = element_blank(),
+    legend.title = element_text(size = 13, face = "bold"),
+    legend.text = element_text(size = 13),
+    legend.key = element_rect(fill = NA, color = NA),
+    legend.background = element_blank()
+  )
 
 #Télécharger l'histogramme
 ggsave(

@@ -37,7 +37,7 @@ FunParamsIBD <- function (data, params=IBD_params) {
 }
 
 id_cols <- c(
-  "code_station","libelle_station","code_departement","reseaux",
+  "code_station","code_sta_pp","libelle_station","code_departement","reseaux",
   "code_prelevement","date_prelevement","annee",
   "code_support","libelle_support",
   "code_indice","libelle_indice","Typologie",
@@ -51,6 +51,7 @@ funMetriquesIBD <- function(Table) {
   Table2 <- Table %>%
     group_by(
       code_station,
+      code_sta_pp,
       libelle_station,
       code_departement,
       reseaux,
@@ -64,30 +65,26 @@ funMetriquesIBD <- function(Table) {
       Typologie,
       Typologie_clean,
       libelle_typologie,
-      code_taxon_lettre
+      code_taxon_lettre,
+      type_resultat
     ) %>%
-    mutate(resultat_taxon = sum(resultat_taxon))
+    mutate(resultat_taxon = sum(resultat_taxon, na.rm = TRUE))
   
   funMetriques_esp_contributives <- function (df){
     
     df %>%
       group_by(
         across(all_of(id_cols))) %>%
-      filter(!is.na(Val.Ind.)) %>%
+      filter(!is.na(Val.Ind.),
+             type_resultat =="NbrTax") %>%
       summarise(
         `Nombre de taxons contributifs` = n_distinct(code_taxon_lettre),
-        `Abondance totale esp contributives`= if (all(type_resultat =="NbrTax")){
-          sum(resultat_taxon)
-        } else {
-          NA_real_
-        },
-        `Diversite de Shannon esp contributives` = if (all(type_resultat =="NbrTax")) {
+        `Abondance totale esp contributives`= sum(resultat_taxon, na.rm = TRUE),
+        `Diversite de Shannon esp contributives` = {
           p <- resultat_taxon / sum(resultat_taxon, na.rm = TRUE)
           p <- p[p > 0]
           - sum(p * log(p))
-        } else {
-          NA_real_
-        },
+        } ,
         `Equitabilite de Pielou esp contributives` = ifelse(`Nombre de taxons contributifs` <= 1,
                                                                    0,
                                                                    `Diversite de Shannon esp contributives` /log(`Nombre de taxons contributifs`)),
@@ -99,14 +96,11 @@ funMetriquesIBD <- function(Table) {
     df %>%
       group_by(
         across(all_of(id_cols))) %>%
-      filter(is.na(Val.Ind.)) %>%
+      filter(is.na(Val.Ind.),
+             type_resultat =="NbrTax") %>%
       summarise(
         `Nombre de taxons non contributifs` = n_distinct(code_taxon_lettre),
-        `Abondance totale esp non contributives`= if (all(type_resultat =="NbrTax")){
-          sum(resultat_taxon)
-        } else {
-          NA_real_
-        },
+        `Abondance totale esp non contributives`= sum(resultat_taxon, na.rm = TRUE),
         .groups = "drop")
   }
   
@@ -116,20 +110,15 @@ funMetriquesIBD <- function(Table) {
     df %>%
       group_by(
         across(all_of(id_cols))) %>%
+      filter( type_resultat =="NbrTax") %>% 
       summarise(
         `Richesse specifique` = n_distinct(code_taxon_lettre),
-        `Abondance totale`= if (all(type_resultat =="NbrTax")){
-          sum(resultat_taxon)
-        } else {
-          NA_real_
-        },
-        `Diversite de Shannon` = if (all(type_resultat =="NbrTax")) {
+        `Abondance totale`= sum(resultat_taxon, na.rm = TRUE),
+        `Diversite de Shannon` = {
           p <- resultat_taxon / sum(resultat_taxon, na.rm = TRUE)
           p <- p[p > 0]
           - sum(p * log(p))
-        } else {
-          NA_real_
-        },
+        } ,
         `Equitabilite de Pielou` = ifelse(`Richesse specifique` <= 1,
                                                         0,
                                                         `Diversite de Shannon` /log(`Richesse specifique`)),
@@ -183,7 +172,8 @@ funFi <- function(table, param) {
     ) %>%
     
     group_by(
-      code_station, libelle_station, code_departement,
+      code_station, code_sta_pp,
+      libelle_station, code_departement,
       code_prelevement, date_prelevement, annee,
       code_support, libelle_support,
       Typologie,
@@ -207,7 +197,7 @@ funFi <- function(table, param) {
     ) %>%
     
     dplyr::select(
-      code_station, libelle_station, code_departement,
+      code_station, code_sta_pp, libelle_station, code_departement,
       code_prelevement, date_prelevement, annee,
       code_support, libelle_support,
       Typologie,

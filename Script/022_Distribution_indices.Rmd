@@ -24,8 +24,8 @@ library(ggtext)
 ## Chargement des données
 
 ```{r}
-BDD_indices <- readRDS(here("Data/clean_data", "BDD_indices.rds"))
-mes_stations<- readRDS(here("Data/clean_data", "liste_stations_retenues.rds")) #stations remplissant les critères de sélection
+load(here("Data/clean_data", "BDD_etude.rda"))
+mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds")) #stations remplissant les critères de sélection
 ```
 
 ## Préparation des données
@@ -130,17 +130,16 @@ saveRDS(BDD_3_cycles, here("Data/clean_data","BDD_3_cycle_indices.rds"))
 
 ```{r}
 # Compter le nombre de stations prises en compte pour chaque indice
-stations_par_indice<- BDD_3_cycles %>%
+stations_par_indice <- BDD_3_cycles %>%
   group_by(libelle_indice, cycle_DCE) %>%
   summarise(n_stations = n_distinct(code_station), .groups = "drop")
 
 style <- c(1, 2, 3)
 
-distrib_densite <- ggplot(BDD_3_cycles,
-                                aes(x = resultat_eqr, fill = cycle_DCE)) +
+distrib_densite <- ggplot(BDD_3_cycles, aes(x = resultat_eqr, fill = cycle_DCE)) +
   geom_density(color = "black", alpha = 0.8) +
-  scale_fill_manual(values = c("#009E73FF", "#56B4E9FF", "#E69F00FF"))+ 
-
+  scale_fill_manual(values = c("#009E73FF", "#56B4E9FF", "#E69F00FF")) +
+  
   geom_vline(
     data = med_dce,
     aes(xintercept = mediane, linetype = cycle_DCE),
@@ -161,7 +160,7 @@ distrib_densite <- ggplot(BDD_3_cycles,
     size = 3
   ) +
   
-  facet_wrap( ~ libelle_indice, scales = "free") +
+  facet_wrap(~ libelle_indice, scales = "free") +
   theme_bw() +
   labs(
     title = "Distribution des EQR par indice, données 'correcte' et 'non définissable'.",
@@ -177,7 +176,8 @@ distrib_densite <- ggplot(BDD_3_cycles,
     axis.title.y = element_text(size = 11),
     strip.text.x = element_text(size = 9, face = "bold"),
     legend.title = element_text(size = 9),
-    legend.text = element_text(size = 8))
+    legend.text = element_text(size = 8)
+  )
 
 ggsave(
   filename = "distrib_densite.png",

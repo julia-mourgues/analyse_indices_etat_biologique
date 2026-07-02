@@ -27,15 +27,11 @@ library(here)
 ```{r}
 load(here("Data/raw_data", "hydrobio_data.rda"))
 Base_station_active <- readRDS(here("Data/clean_data", "Base_station_active_clean.rds")) #contient des informations supplémentaires du labo Hydrobio
-mes_stations_peche<- readRDS(here("Data/clean_data", "mes_stations_peche.rds")) 
-info_operation <- read.csv(here("Data/start_data","operation.csv"), sep=";")
-indices_SEEE<- readRDS(here("Data/clean_data", "indices_hydrobio_SEEE.rds")) 
-```
-
-## charger les fonctions
-
-```{r}
-source(here::here("R","fun_typologie.R"))
+mes_stations_peche <- readRDS(here("Data/clean_data", "mes_stations_peche.rds"))
+info_operation <- read.csv(here("Data/start_data", "operation.csv"), sep =
+                             ";") #fichier provenant de Naïades (https://naiades.eaufrance.fr/reports/reportsperyear/HB/Naiades_Export_France_Entiere_HB.zip)
+indices_SEEE <- readRDS(here("Data/clean_data", "indices_hydrobio_SEEE.rds"))
+stations_typologie <- readRDS(here("Data/clean_data","stations_typologie.rds"))
 ```
 
 # Réarrangement des données
@@ -63,15 +59,10 @@ base_stations_long <- Base_station_active %>%
       bio == "MPHY" ~ "27",
       TRUE ~ NA_character_
     )
-  ) %>% 
-  mutate(
-    Typologie_clean = sapply(Typologie, 
-                             nettoyage_code),
-    libelle_typologie = sapply(Typologie_clean, 
-                               traduire_code))
+  ) 
 ```
 
-# Téléchargement des données
+# Réarrangement des données
 
 ## 1.Données stations
 
@@ -84,12 +75,14 @@ hydrobio_stations_clean <- stations_hydrobio %>%
     -code_masse_eau,
     -libelle_masse_eau,
     -geometry
-  )
+  ) %>% 
+  left_join(stations_typologie %>%  
+              st_drop_geometry() %>% 
+              dplyr::select(code_sta_pp, Code.Station.SANDRE, Typologie, Typologie_clean, libelle_typologie),
+            by=c("code_station_hydrobio"="Code.Station.SANDRE"))
 ```
 
 ## 2.Données indices
-
-Les données sont caractérisées par un niveau de conformité. Ici nous choisissons de travailler sur les données "correctes" et "non définissables".
 
 ```{r}
 indices_clean <- indices_SEEE %>% 
@@ -101,7 +94,10 @@ indices_clean <- indices_SEEE %>%
     classe_indice_SEEE=="TRES_BON" ~"Très bon",
     TRUE ~ classe_indice_SEEE
   )) %>% 
-  left_join(indices_hydrobio %>% ungroup() %>% select(code_station_hydrobio, code_prelevement, annee, date_prelevement, code_indice, libelle_qualification), by=c("code_station_hydrobio", "annee", "code_indice"))
+  left_join(indices_hydrobio %>% 
+              ungroup() %>%
+              select(code_station_hydrobio, code_prelevement, annee, date_prelevement, code_indice, libelle_qualification), 
+            by=c("code_station_hydrobio", "annee", "code_indice"))
 ```
 
 
@@ -143,7 +139,8 @@ hydrobio_taxo <- taxons_hydrobio %>%
 ```{r}
 stations_indices <- left_join(
   hydrobio_stations_clean,
-  indices_clean,
+  indices_clean %>% 
+    select(-code_sta_pp),
   by = 
     "code_station_hydrobio") %>%
   mutate(date_prelevement = ymd(date_prelevement),
@@ -166,7 +163,8 @@ stations_indices <- left_join(
 ```{r}
 stations_indices2 <- left_join(
   stations_indices,
-  base_stations_long,
+  base_stations_long %>% 
+    select(-Typologie),
   by = c(
     "code_station_hydrobio" = "CD_STATION",
     "code_support" = "code_support"
@@ -264,17 +262,12 @@ hydrobio_stations_indices <- hydrobio_stations_indices %>%
 hydrobio_taxo2 <- hydrobio_taxo %>% 
   left_join(Base_station_active,
             by=c("code_station_hydrobio"="CD_STATION")) %>% 
-  select(-starts_with(c("XL93", "YL93"))) %>% 
-  mutate(
-    Typologie_clean = sapply(Typologie, 
-                             nettoyage_code),
-    libelle_typologie = sapply(Typologie_clean, 
-                               traduire_code))
+  select(-starts_with(c("XL93", "YL93")), -Typologie) 
 ```
 
 ## Récupérer les opérateurs
 ```{r}
-hydrobio_taxo2 <- hydrobio_taxo2 %>%
+hydrobio_taxo3 <- hydrobio_taxo2 %>%
   left_join(info_operation2,
             by = c("code_station_hydrobio"="CdStationMesureEauxSurface", 
                    "code_support"="CdSupport",
@@ -286,7 +279,7 @@ hydrobio_taxo2 <- hydrobio_taxo2 %>%
 Il nous manque les opérateurs de 2024 donc on les ajoute à la main.
 
 ```{r}
-hydrobio_taxo2 <- hydrobio_taxo2 %>%
+hydrobio_taxo4 <- hydrobio_taxo3 %>%
   st_drop_geometry() %>% 
   mutate(
     code_indice = case_when(
@@ -305,8 +298,8 @@ hydrobio_taxo2 <- hydrobio_taxo2 %>%
 ```
 
 ```{r}
-hydrobio_taxo_final <- hydrobio_taxo2 %>%
-  st_drop_geometry() %>% 
+hydrobio_taxo_final <- hydrobio_taxo4 %>%
+  st_drop_geometry() %>%
   mutate(
     NomPreleveur = case_when(
       annee == 2024 & is.na(NomPreleveur) &
@@ -347,7 +340,10 @@ hydrobio_taxo_final <- hydrobio_taxo_final %>%
       str_detect(NomPreleveur,"OFB") ~ "OFB",
       TRUE ~  "Prestataire"
     )
-  )
+  ) %>% 
+  left_join(stations_typologie %>%  
+              dplyr::select(code_sta_pp, Code.Station.SANDRE, Typologie, Typologie_clean, libelle_typologie),
+            by=c("code_station_hydrobio"="Code.Station.SANDRE"))
 ```
 
 # Sauvegarder sous forme de .Rdata

@@ -35,7 +35,7 @@ source(here::here("R", "fun_classe_ecologique.R"))
 
 ## Chargement des données
 ```{r}
-BDD_indices <- readRDS(here("Data/clean_data", "BDD_indices.rds"))
+load(here("Data/clean_data", "BDD_etude.rda"))
 mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
 valeurs_seuils <- readRDS(here("Data/clean_data", "valeurs_seuils_indices.rds"))
 ```
@@ -61,106 +61,27 @@ BDD_IPR_RRP <- BDD_IPR%>%
          julian=lubridate::yday(date_prelevement)) 
 ```
 
-## Plot pour vérifier visuellement la normalité
-```{r}
-ggplot(BDD_IPR_RRP, aes(x=resultat_eqr))+
-  geom_histogram(show.legend = FALSE, color = "black")+
-  theme_bw()+
-  labs(title="Distribution des résultats de chaque indice.",
-       x="Résultat",
-       y="Nombre")
-
-ggplot(BDD_IPR_RRP, aes(x=resultat_log))+
-  geom_histogram(show.legend = FALSE, color = "black")+
-  theme_bw()+
-  labs(title="Distribution des résultats de chaque indice.",
-       x="Résultat",
-       y="Nombre")
-
-#Observer distribution des jours julian
-ggplot(BDD_IPR_RRP, aes(x=julian))+
-  geom_histogram(show.legend = FALSE, color = "black")+
-  theme_bw()+
-  labs(title="distribution jour julian",
-       x="jour julian",
-       y="Nombre")
-```
-
-
 ## LMM sur les données IPR log transformées
 
-Hypothèse à tester: l'évolution de la valeur de l'indice dépend des stations 
+Hypothèse à tester: l'évolution temporelle de la valeur de l'indice dépend des stations 
+```{r}
+M_log_RRP <- lmer(resultat_log ~ annee_c + (1 + annee_c |code_station), #effet fixe "annee" + effet aléatoire "station" sur intercept et pente
+                  data = BDD_IPR_RRP,
+                  REML = FALSE) 
+```
 
-
-
-## Ecriture des modeles possibles
-point sur les variables
-
-- reseaux: un peu déséquilibré aussi mais que 2 catégories
-- operateur: très déséquilibré, catégories avec tres peu de données. On l'enlève pour le modele
+### Vérifier le respect des conditions d'application
 
 
 ```{r}
-# utilisation de modeles linéaires mixtes sur les données transformées
-#Test de plusieurs écriture de modèle
-
-M_log_RRP_1 <- lmer(resultat_log ~ annee_c + (1 + annee_c | code_station), data = BDD_IPR_RRP, REML=FALSE , lmerControl(optimizer = "bobyqa")) #pente aléatoire et intercept aléatoire en fonction des stations
-
-M_log_RRP_2 <- lmer(resultat_log ~ annee_c + (1 + annee_c | code_station)+ julian +operateur +libelle_typologie + annee_min, data = BDD_IPR_RRP, REML=FALSE, lmerControl(optimizer = "bobyqa")) #pente aléatoire et intercept aléatoire en fonction des stations
-
-M_brute_RRP <- lmer(resultat_eqr ~ annee_c + (1 + annee_c | code_station)+ julian +operateur +libelle_typologie + annee_min, data = BDD_IPR_RRP, REML=FALSE, lmerControl(optimizer = "bobyqa")) 
-
 #Visualisation des résidus
-library(DHARMa)
-
-# Simulation des résidus
-sim_log_RRP_1  <- simulateResiduals(M_log_RRP_1)
-sim_log_RRP_2  <- simulateResiduals(M_log_RRP_2)
-sim_RRP_2  <- simulateResiduals(M_brute_RRP)
+sim_log_RRP  <- simulateResiduals(M_log_RRP)
 
 # Affichage côte à côte
 par(mfrow = c(2, 2))
 
-plot(sim_log_RRP_1, main = "DHARMa - M_log_RRP_1")
-plot(sim_log_RRP_2, main = "DHARMa - M_log_RRP_2")
-plot(sim_RRP_2, main = "DHARMa - M_log_RRP_2")
+plot(sim_log_RRP, main = "DHARMa - M_log_RRP")
 ```
-
-###Tester la multicolinéarité
-```{r}
-vif(M_log_RRP_2)
-```
-vif environ = à 1 donc pas de multicolinéarité, modele fiable
- 
-
-##Tester toutes les combinaisons de modèles et déterminer les variables ayant un effet significatif
-```{r}
-options(na.action = "na.fail")
-dredge_log_RRP_2 <- dredge(M_log_RRP_2)
-
-summary(model.avg(dredge_log_RRP_2, subset = delta < 2))
-```
-4 modèles retenus
-
-Conditional average:
-- année: toujours significatif, variable importante
-
-On garde donc le modele simple avec annee_c et pente aléatore par station.
-
-Dans le plot DHARMa du modele M_log1, on voit qu'on a des outliers. Nous allons donc les identifier et les retirer.
-
-
-
-### Vérifier l'homogénéité des résidus
-```{r}
-M_log_RRP <- lmer(resultat_log ~ annee_c + (1 + annee_c | code_station), data = BDD_IPR_RRP, REML=FALSE) 
-
-# Plotez les valeurs prédites par rapport aux valeurs résiduelles
-par(mar = c(4, 4, 0.5, 0.5))
-plot(resid(M_log_RRP) ~ fitted(M_log_RRP), xlab = "Predicted values", ylab = "Normalized residuals")
-abline(h = 0, lty = 2)
-```
-
 La variance est homogène
 
 
@@ -186,12 +107,15 @@ Il semble que l'indépendance des résidus soit vérifiée
 
 ## Interprétation du modèle.
 ```{r}
-Modele_IPR_RRP <- lmer(resultat_log ~ annee_c + (1 + annee_c | code_station) , data = BDD_IPR_RRP, REML=TRUE, control=lmerControl(optimizer = "bobyqa")) 
+Modele_IPR_RRP <- lmer(resultat_log ~ annee_c + (1 + annee_c | code_station) , 
+                       data = BDD_IPR_RRP, 
+                       REML=TRUE, 
+                       control=lmerControl(optimizer = "bobyqa")) 
 
 # Résumé avec p-values
 summary(Modele_IPR_RRP)
 
-# Résumé
+# Récupérer les paramètres du modèle
 coef_table_RRP <- as.data.frame(coef(summary(Modele_IPR_RRP)))
 names(coef_table_RRP) <- c("Estimate", "Std_Error", "df", "t_value", "p_value")
 
@@ -207,7 +131,7 @@ r2_vals <- r.squaredGLMM(Modele_IPR_RRP)
 r2_marg <- r2_vals[1]
 r2_cond <- r2_vals[2]
 
-# Construire un tableau déjà tidy
+# Construire un tableau
 donnees_model_IPR_RRP <- data.frame(
   libelle_indice = "IPR",
   reseaux = "RRP",
@@ -224,38 +148,29 @@ donnees_model_IPR_RRP <- donnees_model_IPR_RRP %>%
   mutate(annee_estimate = exp(annee_estimate),
          across(where(is.numeric), ~ round(., 3)))
 ```
-Principaux résultats:
-- Effets aléatoires
-* intercept aléatoire (variance = 0.09): les stations ont des niveaux moyens très différents
-* pente aléatoire (variance = 0.00019): les stations n'ont pas toutes les mêmes tendances temporelles
-
-
-
-- Effets fixes
-* annee_c = 0.013-> effet du temps, tendance positive mais très faible et significative
-
 
 ## Retranformer les données pour faire le plot sur les valeurs brutes
 ```{r}
-newdata_RRP <- data.frame(
-  annee = seq(min(BDD_IPR_RRP$annee), max(BDD_IPR_RRP$annee), length.out = 200)
-)
+newdata_RRP <- data.frame(annee = seq(min(BDD_IPR_RRP$annee), 
+                                      max(BDD_IPR_RRP$annee), 
+                                      length.out = 200))
+
 newdata_RRP$annee_c <- newdata_RRP$annee - min(BDD_IPR_RRP$annee) + 1
-pred <- predict(Modele_IPR_RRP, newdata_RRP, re.form = NA, se.fit = TRUE)
+pred <- predict(Modele_IPR_RRP,
+                newdata_RRP,
+                re.form = NA,
+                se.fit = TRUE)
 
 #Intervalle de confiance
 newdata_RRP$fit_log   <- pred$fit
 newdata_RRP$lower_log <- pred$fit - 1.96 * pred$se.fit
 newdata_RRP$upper_log <- pred$fit + 1.96 * pred$se.fit
 
-#Retransformer les données
-newdata_RRP$fit   <- exp(newdata_RRP$fit_log)-1
-newdata_RRP$lower <- exp(newdata_RRP$lower_log)-1
-newdata_RRP$upper <- exp(newdata_RRP$upper_log)-1
-
+#Retransformer les données, sachant que la tranformation initiale: log(resultat+1)
+newdata_RRP$fit   <- exp(newdata_RRP$fit_log) - 1
+newdata_RRP$lower <- exp(newdata_RRP$lower_log) - 1
+newdata_RRP$upper <- exp(newdata_RRP$upper_log) - 1
 ```
-
-
 
 
 #Réseau RCS 
@@ -273,122 +188,41 @@ BDD_IPR_RCS <- BDD_IPR%>%
 ```
 
 
-## Plot pour vérifier visuelement la normalité
-```{r}
-ggplot(BDD_IPR_RCS, aes(x=resultat_eqr))+
-  geom_histogram(show.legend = FALSE, color = "black")+
-  theme_bw()+
-  labs(title="Distribution des résultats de chaque indice.",
-       x="Résultat",
-       y="Nombre")
-
-ggplot(BDD_IPR_RCS, aes(x=resultat_log))+
-  geom_histogram(show.legend = FALSE, color = "black")+
-  theme_bw()+
-  labs(title="Distribution des résultats de chaque indice.",
-       x="Résultat",
-       y="Nombre")
-
-#Observer distribution des jours julian
-ggplot(BDD_IPR_RCS, aes(x=julian))+
-  geom_histogram(show.legend = FALSE, color = "black")+
-  theme_bw()+
-  labs(title="Distribution jour julian",
-       x="jour julian",
-       y="Nombre")
-```
-
 ## LMM sur les données IPR log transformées
 
 Hypothèse à tester: l'évolution de la valeur de l'indice dépend des stations 
 
-## Ecriture des modeles possibles
-point sur les variables
-
-- reseaux: un peu déséquilibré aussi mais que 2 catégories
-- operateur: très déséquilibré, catégories avec tres peu de données. On l'enlève pour le modele
-
-
 ```{r}
-# utilisation de modeles linéaires mixtes sur les données transformées
-#Test de plusieurs écriture de modèle
-
-M_log_RCS_1 <- lmer(resultat_log ~ annee_c + (1 + annee_c | code_station), data = BDD_IPR_RCS, REML=FALSE , lmerControl(optimizer = "bobyqa")) #pente aléatoire et intercept aléatoire en fonction des stations
-
-M_log_RCS_2 <- lmer(resultat_log ~ annee_c + (1 + annee_c | code_station)+ julian +operateur +libelle_typologie + annee_min, data = BDD_IPR_RCS, REML=FALSE, lmerControl(optimizer = "bobyqa")) #pente aléatoire et intercept aléatoire en fonction des stations
+M_log_RCS <- lmer(resultat_log ~ annee_c + (1 + annee_c | code_station), 
+                  data = BDD_IPR_RCS, 
+                  REML=FALSE) 
+```
 
 
-
+### Vérifier le respect des conditions d'application
+```{r}
 #Visualisation des résidus
-library(DHARMa)
-
-# Simulation des résidus
-sim_log_RCS_1  <- simulateResiduals(M_log_RCS_1)
-sim_log_RCS_2  <- simulateResiduals(M_log_RCS_2)
+sim_log_RCS  <- simulateResiduals(M_log_RCS)
 
 # Affichage côte à côte
 par(mfrow = c(2, 2))
 
-plot(sim_log_RCS_1, main = "DHARMa - M_log_RCS_1")
-plot(sim_log_RCS_2, main = "DHARMa - M_log_RCS_2")
-```
-
-###Tester la multicolinéarité
-```{r}
-vif(M_log_RCS_2)
-```
-vif environ = à 1 donc pas de multicolinéarité, modele fiable
- 
-##Tester toutes les combinaisons de modèles et déterminer les variables ayant un effet significatif
-```{r}
-options(na.action = "na.fail")
-dredge_log_RCS_2 <- dredge(M_log_RCS_2)
-
-summary(model.avg(dredge_log_RCS_2, subset = delta < 2))
-```
-
-Annee_c n'a pas d'effet significatif.
-On garde le modele le plus simple.
-
-
-### Vérifier l'homogénéité des résidus
-```{r}
-# Plotez les valeurs prédites par rapport aux valeurs résiduelles
-par(mar = c(4, 4, 0.5, 0.5))
-plot(resid(M_log_RCS_1) ~ fitted(M_log_RCS_1), xlab = "Predicted values", ylab = "Normalized residuals")
-abline(h = 0, lty = 2)
+plot(sim_log_RCS, main = "DHARMa - M_log_RCS")
 ```
 La variance est homogène
 
 
-### Vérifier l'indépendance des résidus
-```{r}
-# Afin de vérifier l'indépendance des résidus du modèle,
-# nous devons tracer les résidus en fonction de chaque
-# covariable du modèle.
-par(mfrow = c(1, 3), mar = c(4, 4, 0.5, 0.5))
-
-plot(resid(M_log_RCS_1) ~ BDD_IPR_RCS$resultat_log, xlab = "IPR", ylab = "Normalized residuals")
-abline(h = 0, lty = 2)
-
-boxplot(resid(M_log_RCS_1) ~ annee_c, data = BDD_IPR_RCS, xlab = "Années",
-    ylab = "Normalized residuals")
-abline(h = 0, lty = 2)
-
-boxplot(resid(M_log_RCS_1) ~ code_station, data = BDD_IPR_RCS, xlab = "stations", ylab = "Normalized residuals")
-abline(h = 0, lty = 2)
-```
-Il semble que l'indépendance des résidus soit vérifiée
-
-
 ## Interprétation du modèle
 ```{r}
-Modele_IPR_RCS <- lmer(resultat_log ~ annee_c + (1 + annee_c | code_station), data = BDD_IPR_RCS, REML=TRUE, control=lmerControl(optimizer = "bobyqa"))
+Modele_IPR_RCS <- lmer(resultat_log ~ annee_c + (1 + annee_c | code_station), 
+                       data = BDD_IPR_RCS, 
+                       REML=TRUE, 
+                       control=lmerControl(optimizer = "bobyqa"))
 
 # Résumé avec p-values
 summary(Modele_IPR_RCS)
 
-# Résumé
+# Récupérer les données du modèle
 coef_table_RCS <- as.data.frame(coef(summary(Modele_IPR_RCS)))
 names(coef_table_RCS) <- c("Estimate", "Std_Error", "df", "t_value", "p_value")
 
@@ -421,18 +255,6 @@ donnees_model_IPR_RCS <- donnees_model_IPR_RCS %>%
   mutate(annee_estimate = exp(annee_estimate),
          across(where(is.numeric), ~ round(., 3)))
 ```
-
-
-Principaux résultats:
-- Effets aléatoires
-* intercept aléatoire (variance = 0.22): les stations ont des niveaux moyens très différents
-* pente aléatoire (variance = 0.0021): les stations n'ont pas toutes les mêmes tendances temporelles
-* corrélation intercept-pente = -0.69 -> les stations avec un niveau initial élevé ont tendance à avoir une pente légèrement plus faible.
-
-
-- Effets fixes
-* annee_c = 0.043-> effet du temps, tendance positive mais très faible et  significative
-
 
 ## Retransformer les données pour faire le plot sur les valeurs brutes
 
@@ -475,121 +297,139 @@ classes_generales_IPR <- creation_classes(col_code= "7036",
 ```{r}
 Tendances_generales <- ggplot(BDD_IPR, aes(x = annee, y = resultat_eqr)) +
   ggplot2::geom_rect(
-      data = classes_generales_IPR,
-      ggplot2::aes(
-        ymin = classe_borne_inf,
-        ymax = classe_borne_sup,
-        fill = classe_libelle
-      ),
-      xmin = -Inf,
-      xmax = Inf,
-      alpha = 0.2,
-      inherit.aes = FALSE
-    ) +
+    #couleurs de fond correspondant aux classes d'état biologique
+    data = classes_generales_IPR,
+    ggplot2::aes(ymin = classe_borne_inf, 
+                 ymax = classe_borne_sup, 
+                 fill = classe_libelle),
+    xmin = -Inf,
+    xmax = Inf,
+    alpha = 0.2,
+    inherit.aes = FALSE
+  ) +
   ggplot2::scale_fill_manual(
-      name = "Etat biologique",
-      values = setNames(classes_generales_IPR$classe_couleur, classes_generales_IPR$classe_libelle),
-      guide = ggplot2::guide_legend(reverse = TRUE)
-    ) +
-  geom_point(colour = "black", size = 1,
-             alpha = 0.1) +
+    name = "Etat biologique",
+    values = setNames(
+      classes_generales_IPR$classe_couleur,
+      classes_generales_IPR$classe_libelle
+    ),
+    guide = ggplot2::guide_legend(reverse = TRUE)
+  ) +
+  geom_point(
+    colour = "black",
+    #Points des valeurs brutes d'indices
+    size = 1,
+    alpha = 0.1
+  ) +
   geom_line(
+    #tendance du réseau RCS
     data = newdata_RCS,
     aes(x = annee, y = fit, colour = "Tendance générale RCS"),
     linewidth = 1.3,
     inherit.aes = FALSE
   ) +
   geom_line(
-  data = newdata_RCS,
-  aes(x = annee, y = lower),
-  linetype = "dotted",
-  colour = "#CD6839",
-  linewidth = 1,
-  alpha=1,
-  inherit.aes = FALSE
-) +
-geom_line(
-  data = newdata_RCS,
-  aes(x = annee, y = upper),
-  linetype = "dotted",
-  colour = "#CD6839",
-  linewidth = 1,
-  alpha=1,
-  inherit.aes = FALSE
-)+
+    #limite basse de l'intervalle de confiance du réseau RCS
+    data = newdata_RCS,
+    aes(x = annee, y = lower),
+    linetype = "dotted",
+    colour = "#CD6839",
+    linewidth = 1,
+    alpha = 1,
+    inherit.aes = FALSE
+  ) +
   geom_line(
+    #limite haute de l'intervalle de confiance du réseau RCS
+    data = newdata_RCS,
+    aes(x = annee, y = upper),
+    linetype = "dotted",
+    colour = "#CD6839",
+    linewidth = 1,
+    alpha = 1,
+    inherit.aes = FALSE
+  ) +
+  geom_line(
+    #tendance du réseau RRP
     data = newdata_RRP,
     aes(x = annee, y = fit, colour = "Tendance générale RRP"),
     linewidth = 1.3,
     inherit.aes = FALSE
   ) +
   geom_line(
-  data = newdata_RRP,
-  aes(x = annee, y = lower),
-  linetype = "dotted",
-  colour = "#2D0084",
-  linewidth = 1,
-  alpha=1,
-  inherit.aes = FALSE
-) +
-geom_line(
-  data = newdata_RRP,
-  aes(x = annee, y = upper),
-  linetype = "dotted",
-  colour = "#2D0084",
-  linewidth = 1,
-  alpha=1,
-  inherit.aes = FALSE
-)+
+    #limite basse de l'intervalle de confiance du réseau RRP
+    data = newdata_RRP,
+    aes(x = annee, y = lower),
+    linetype = "dotted",
+    colour = "#2D0084",
+    linewidth = 1,
+    alpha = 1,
+    inherit.aes = FALSE
+  ) +
+  geom_line(
+    #limite haute de l'intervalle de confiance du réseau RRP
+    data = newdata_RRP,
+    aes(x = annee, y = upper),
+    linetype = "dotted",
+    colour = "#2D0084",
+    linewidth = 1,
+    alpha = 1,
+    inherit.aes = FALSE
+  ) +
   scale_color_manual(
-   name = "Droites de tendance",
-   values = c(
-    "Tendance générale RCS" = "#CD6839",
-    "Tendance générale RRP" = "#2D0084"
-  ))+
-  scale_y_reverse()+
+    name = "Droites de tendance",
+    values = c(
+      "Tendance générale RCS" = "#CD6839",
+      "Tendance générale RRP" = "#2D0084"
+    )
+  ) +
+  scale_y_reverse() +
   labs(
     title = "Tendances temporelles des résultats de l'EQR Indice Poisson Rivière (IPR) par réseau.",
     subtitle = "Formule LMM = <i>resultat_eqr ~ annee_centree + (1 + annee_centree | code_station)</i>.<br>
     Les lignes en pointillés correspondent aux intervalles de confiance des tendances. ",
-    caption="**EQR** = Ecological Quality Ratio, il s'agit d'un ratio entre le résultat observé et une valeur de référence.<br>
+    caption = "**EQR** = Ecological Quality Ratio, il s'agit d'un ratio entre le résultat observé et une valeur de référence.<br>
 **<span style='color:#CD6839;'>RCS</span>**= Réseau de Contrôle de Surveillance.<br>
 **<span style='color:#2D0084;'>RRP</span>**= Réseau de Référence Perenne.<br>
 Une augmentation de la valeur de l'IPR correspond à la dégradation de l'état biologique.<br>
 L'IPR est étudié sur la periode 2013-2024 pour le réseau **<span style='color:#2D0084;'>RRP</span>** et 2007-2024 pour le réseau **<span style='color:#CD6839;'>RCS</span>**.",
-    x = "Année",
-    y = "IPR"
+x = "Année",
+y = "IPR"
   ) +
   theme_bw() +
-  theme(plot.title=element_textbox_simple(size=16, 
-                                            face="bold", 
-                                            margin = margin(t=10,b = 10)),
-        plot.subtitle = ggtext::element_textbox_simple(
-          size = 13, margin = margin(b = 10)
-        ),
-        axis.title = element_text(size=14),
-        axis.text = element_text(size=12),
-        legend.title=element_text(size=13, face="bold"),
-        legend.text=element_text(size=13),
-        legend.position = "right",
-        legend.title.position = "top",
-        plot.caption = element_textbox_simple(
-          size = 12,
-          hjust = 0,      # 0 = aligné à gauche, 1 = à droite
-          lineheight = 1.2,
-          margin=margin(t=10),
-          fill = "white", 
-          box.color = "black",
-          width = unit(0.80, "npc")
-      )
-        )
+  theme(
+    plot.title = element_textbox_simple(
+      size = 16,
+      face = "bold",
+      margin = margin(t = 10, b = 10)
+    ),
+    plot.subtitle = ggtext::element_textbox_simple(size = 13, margin = margin(b = 10)),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12),
+    legend.title = element_text(size = 13, face = "bold"),
+    legend.text = element_text(size = 13),
+    legend.position = "right",
+    legend.title.position = "top",
+    plot.caption = element_textbox_simple(
+      size = 12,
+      hjust = 0,
+      # 0 = aligné à gauche, 1 = à droite
+      lineheight = 1.2,
+      margin = margin(t = 10),
+      fill = "white",
+      box.color = "black",
+      width = unit(0.80, "npc")
+    )
+  )
 
 
 ggplot2::ggsave(
-      filename = file.path("../Output/1_Tendance_indice/03_LMM/IPR/Tendances_generales_IPR.jpg"),
-      plot     = Tendances_generales,
-      width    = 13,
-      height   = 10)
+  filename = file.path(
+    "../Output/1_Tendance_indice/03_LMM/IPR/Tendances_generales_IPR.jpg"
+  ),
+  plot     = Tendances_generales,
+  width    = 13,
+  height   = 10
+)
 ```
 
 ## Réseau RRP
@@ -600,19 +440,19 @@ stations.coef_RRP$code_station <- rownames(stations.coef_RRP)
 stations.coef_RRP <- coef(Modele_IPR_RRP)$code_station %>%
   as.data.frame() %>%
   tibble::rownames_to_column("code_station") %>%
-  dplyr::rename(
-    intercept_station = `(Intercept)`,
-    pente_station = annee_c
-  )
+  dplyr::rename(intercept_station = `(Intercept)`, pente_station = annee_c)
 
 lines_by_station_RRP <- BDD_IPR_RRP %>%
-  dplyr::select(code_station, libelle_station, code_departement, annee, annee_c) %>%
+  dplyr::select(code_station,
+                code_sta_pp,
+                libelle_station,
+                code_departement,
+                annee,
+                annee_c) %>%
   dplyr::distinct() %>%
   dplyr::left_join(stations.coef_RRP, by = "code_station") %>%
-  dplyr::mutate(
-    fit_log = intercept_station + pente_station * annee_c,
-    fit = exp(fit_log)-1
-  )
+  dplyr::mutate(fit_log = intercept_station + pente_station * annee_c,
+                fit = exp(fit_log) - 1)
 ```
 
 Définir l'ordre d'apparition des stations en fonction de la valeur de la pente et du code du département
@@ -620,7 +460,7 @@ Définir l'ordre d'apparition des stations en fonction de la valeur de la pente 
 ```{r}
 ordre_stations_RRP <- lines_by_station_RRP %>%
   distinct(libelle_station, pente_station) %>%
-  arrange( desc(pente_station)) %>%
+  arrange(desc(pente_station)) %>%
   pull(libelle_station)
 
 BDD_IPR_RRP <- BDD_IPR_RRP %>%
@@ -630,7 +470,7 @@ lines_by_station_RRP <- lines_by_station_RRP %>%
   mutate(libelle_station = factor(libelle_station, levels = ordre_stations_RRP))
 
 lab_facet_RRP <- BDD_IPR_RRP %>%
-  ungroup() %>% 
+  ungroup() %>%
   distinct(libelle_station, code_departement) %>%
   mutate(label = paste0(libelle_station, " (", code_departement, ")")) %>%
   select(-code_departement) %>%   # garder seulement 2 colonnes
@@ -659,20 +499,19 @@ classes_IPR$classe_libelle <- factor(
 ```
 
 ```{r}
+#paramètres de mise en page du graph
 n_facettes_RRP <- length(unique(BDD_IPR_RRP$libelle_station))
-n_col_RRP <-5
+n_col_RRP <- 5
 n_lignes_RRP <- ceiling(n_facettes_RRP / n_col_RRP)
 hauteur_plot_RRP <- n_lignes_RRP * 3
 largeur_plot_RRP <- n_col_RRP * 4
 
+#graphique
 Tendance_IPR_RRP <- ggplot(BDD_IPR_RRP, aes(x = annee, y = resultat_eqr)) +
   geom_rect(
+    #couleurs de fond correspondant aux classes d'état biologique
     data = classes_IPR,
-    aes(
-      ymin = classe_borne_inf,
-      ymax = classe_borne_sup,
-      fill = classe_libelle
-    ),
+    aes(ymin = classe_borne_inf, ymax = classe_borne_sup, fill = classe_libelle),
     xmin = -Inf,
     xmax = Inf,
     alpha = 0.6,
@@ -684,94 +523,121 @@ Tendance_IPR_RRP <- ggplot(BDD_IPR_RRP, aes(x = annee, y = resultat_eqr)) +
     guide = guide_legend(reverse = TRUE)
   ) +
   geom_line(
-  data = newdata_RRP,
-  aes(x = annee, y = lower),
-  linetype = "dotted",
-  colour = "#2D0084",
-  linewidth = 0.6,
-  alpha=0.6,
-  inherit.aes = FALSE
-) +
-geom_line(
-  data = newdata_RRP,
-  aes(x = annee, y = upper),
-  linetype = "dotted",
-  colour = "#2D0084",
-  linewidth = 0.6,
-  alpha=0.6,
-  inherit.aes = FALSE
-)+
+    #limite basse de l'intervalle de confiance du réseau RRP
+    data = newdata_RRP,
+    aes(x = annee, y = lower),
+    linetype = "dotted",
+    colour = "#2D0084",
+    linewidth = 0.6,
+    alpha = 0.6,
+    inherit.aes = FALSE
+  ) +
   geom_line(
+    #limite haute de l'intervalle de confiance du réseau RRP
+    data = newdata_RRP,
+    aes(x = annee, y = upper),
+    linetype = "dotted",
+    colour = "#2D0084",
+    linewidth = 0.6,
+    alpha = 0.6,
+    inherit.aes = FALSE
+  ) +
+  geom_line(
+    #tendance du réseau RRP
     data = newdata_RRP,
     aes(x = annee, y = fit, colour = "Tendance générale des stations RRP"),
     linewidth = 1,
     linetype = 2,
     inherit.aes = FALSE
   ) +
-  geom_point(colour = "#990099FF", size = 2
-             , alpha = 0.7) +
+  geom_point(
+    #données brutes de la station
+    colour = "#990099FF",
+    size = 2,
+    alpha = 0.7) +
   geom_line(
+    #Tendance de la station
     data = lines_by_station_RRP,
     aes(x = annee, y = fit, colour = "Tendance de la station"),
     linewidth = 1
   ) +
   scale_color_manual(
-  name = "Droites de tendance",
-  values = c(
-    "Tendance générale des stations RRP" = "#2D0084",
-    "Tendance de la station" = "#990099FF"
-  ))+
-  scale_y_reverse()+
-  scale_x_continuous(
-    breaks = seq(
-      from = min(BDD_IPR_RRP$annee),
-      to   = max(BDD_IPR_RRP$annee),
-      by   = 2
-    ))+
-  facet_wrap(~libelle_station, ncol= n_col_RRP, labeller = labeller(libelle_station = lab_facet_RRP))+
+    name = "Droites de tendance",
+    values = c(
+      "Tendance générale des stations RRP" = "#2D0084",
+      "Tendance de la station" = "#990099FF"
+    )
+  ) +
+  scale_y_reverse() +
+  scale_x_continuous(breaks = seq(
+    from = min(BDD_IPR_RRP$annee),
+    to   = max(BDD_IPR_RRP$annee),
+    by   = 2
+  )) +
+  facet_wrap(
+    ~ libelle_station,
+    ncol = n_col_RRP,
+    labeller = labeller(libelle_station = lab_facet_RRP)
+  ) +
   labs(
     title = "Tendance temporelle des résultats de l'EQR Indice Poisson Rivière (IPR) pour les stations <span style='color:#2D0084;'>RRP</span>, et comparaison avec la tendance générale des stations <span style='color:#2D0084;'>RRP</span>.",
-    subtitle="Formule LMM = <i>resultat_eqr ~ annee_centree + (1 + annee_centree | code_station)</i>.<br>
+    subtitle = "Formule LMM = <i>resultat_eqr ~ annee_centree + (1 + annee_centree | code_station)</i>.<br>
     Les lignes en pointillés délimitent l'intervalle de confiance de la tendance générale du réseau **<span style='color:#2D0084;'>RRP</span>**.",
-    caption="**EQR** = Ecological Quality Ratio, il s'agit d'un ratio entre le résultat observé et une valeur de référence.<br>
+    caption = "**EQR** = Ecological Quality Ratio, il s'agit d'un ratio entre le résultat observé et une valeur de référence.<br>
 **<span style='color:#2D0084;'>RRP</span>**= Réseau de Référence Perenne.<br>
 Une augmentation de la valeur de l'IPR correspond à la dégradation de l'état biologique.<br>
 L'IPR est étudié sur la periode 2013-2024.",
-    x = "Année",
-    y = "IPR"
+x = "Année",
+y = "IPR"
   ) +
   theme_bw() +
   theme(
-    plot.title=element_textbox_simple(
-      size = 20,           # Taille du texte
-      face = "bold",       # Gras
-      margin = margin(b = 10)),# Marge en bas
-    plot.subtitle=element_markdown(
-      size = 16,           # Taille du texte
+    plot.title = element_textbox_simple(
+      size = 20,
+      # Taille du texte
+      face = "bold",
+      # Gras
+      margin = margin(b = 10)
+    ),
+    # Marge en bas
+    plot.subtitle = element_markdown(
+      size = 16,
+      # Taille du texte
       lineheight = 1.3,
-      margin = margin(b = 5) ),# Marge en bas
-    axis.title = element_text(size=16),
-    legend.title=element_text(size=16, face="bold"),
-    legend.text=element_text(size=14),
+      margin = margin(b = 5)
+    ),
+    # Marge en bas
+    axis.title = element_text(size = 16),
+    legend.title = element_text(size = 16, face = "bold"),
+    legend.text = element_text(size = 14),
     legend.position = "bottom",
     legend.title.position = "top",
-    strip.text = element_textbox_simple(size=11, margin = margin(10,3,7,3),halign = 0.5),
+    strip.text = element_textbox_simple(
+      size = 11,
+      margin = margin(10, 3, 7, 3),
+      halign = 0.5
+    ),
     strip.background = element_rect(fill = NA, color = "black"),
     plot.caption = element_textbox_simple(
       size = 13,
-      hjust = 0,      # 0 = aligné à gauche, 1 = à droite
+      hjust = 0,
+      # 0 = aligné à gauche, 1 = à droite
       lineheight = 1.2,
-      margin=margin(b=5),
+      margin = margin(b = 5),
       box.color = "black",
       linewidth = 0.7,
       width = unit(0.80, "npc")
-  ))
+    )
+  )
 
 ggplot2::ggsave(
-      filename = file.path("../Output/1_Tendance_indice/03_LMM/IPR/Tendance_IPR_RRP.jpg"),
-      plot     = Tendance_IPR_RRP,
-      width    = largeur_plot_RRP,
-      height   = hauteur_plot_RRP)
+  filename = file.path(
+    "../Output/1_Tendance_indice/03_LMM/IPR/Tendance_IPR_RRP.jpg"
+  ),
+  plot     = Tendance_IPR_RRP,
+  width    = largeur_plot_RRP,
+  height   = hauteur_plot_RRP
+)
 ```
 
 
@@ -783,27 +649,26 @@ ggplot2::ggsave(
 ### Graphique facetté
 
 ```{r}
-#Mettre les coefs dans un tableau pour les rendre plus faciles à manipuler
-
+#Mettre les coeffs dans un tableau pour les rendre plus faciles à manipuler
 stations.coef_RCS <- coef(Modele_IPR_RCS)$code_station
 stations.coef_RCS$code_station <- rownames(stations.coef_RCS)
 
 stations.coef_RCS <- coef(Modele_IPR_RCS)$code_station %>%
   as.data.frame() %>%
   tibble::rownames_to_column("code_station") %>%
-  dplyr::rename(
-    intercept_station = `(Intercept)`,
-    pente_station = annee_c
-  )
+  dplyr::rename(intercept_station = `(Intercept)`, pente_station = annee_c)
 
 lines_by_station_RCS <- BDD_IPR_RCS %>%
-  dplyr::select(code_station, libelle_station, annee, annee_c, code_departement) %>%
+  dplyr::select(code_station,
+                code_sta_pp,
+                libelle_station,
+                annee,
+                annee_c,
+                code_departement) %>%
   dplyr::distinct() %>%
   dplyr::left_join(stations.coef_RCS, by = "code_station") %>%
-  dplyr::mutate(
-    fit_log = intercept_station + pente_station * annee_c,
-    fit = exp(fit_log)-1
-  )
+  dplyr::mutate(fit_log = intercept_station + pente_station * annee_c,
+                fit = exp(fit_log) - 1)
 ```
 
 
@@ -821,7 +686,7 @@ lines_by_station_RCS <- lines_by_station_RCS %>%
   mutate(libelle_station = factor(libelle_station, levels = ordre_stations_RCS))
 
 lab_facet_RCS <- BDD_IPR_RCS %>%
-  ungroup() %>% 
+  ungroup() %>%
   distinct(libelle_station, code_departement) %>%
   mutate(label = paste0(libelle_station, " (", code_departement, ")")) %>%
   select(-code_departement) %>%   # garder seulement 2 colonnes
@@ -829,20 +694,19 @@ lab_facet_RCS <- BDD_IPR_RCS %>%
 ```
 
 ```{r}
+#paramètres de mise en page du graphique
 n_facettes_RCS <- length(unique(BDD_IPR_RCS$libelle_station))
-n_col_RCS <-6
+n_col_RCS <- 6
 n_lignes_RCS <- ceiling(n_facettes_RCS / n_col_RCS)
 hauteur_plot_RCS <- n_lignes_RCS * 2.5
 largeur_plot_RCS <- n_col_RCS * 3
 
+#graphique
 Tendance_IPR_RCS <- ggplot(BDD_IPR_RCS, aes(x = annee, y = resultat_eqr)) +
   geom_rect(
+    #couleurs de fond correspondant aux classes d'état biologique
     data = classes_IPR,
-    aes(
-      ymin = classe_borne_inf,
-      ymax = classe_borne_sup,
-      fill = classe_libelle
-    ),
+    aes(ymin = classe_borne_inf, ymax = classe_borne_sup, fill = classe_libelle),
     xmin = -Inf,
     xmax = Inf,
     alpha = 0.5,
@@ -854,90 +718,117 @@ Tendance_IPR_RCS <- ggplot(BDD_IPR_RCS, aes(x = annee, y = resultat_eqr)) +
     guide = guide_legend(reverse = TRUE)
   ) +
   geom_line(
-  data = newdata_RCS,
-  aes(x = annee, y = lower),
-  linetype = "dotted",
-  colour = "#CD6839",
-  linewidth = 0.6,
-  alpha=0.6,
-  inherit.aes = FALSE
-) +
-geom_line(
-  data = newdata_RCS,
-  aes(x = annee, y = upper),
-  linetype = "dotted",
-  colour = "#CD6839",
-  linewidth = 0.6,
-  alpha=0.6,
-  inherit.aes = FALSE
-) +
+    #limite basse de l'intervalle de confiance du réseau RCS
+    data = newdata_RCS,
+    aes(x = annee, y = lower),
+    linetype = "dotted",
+    colour = "#CD6839",
+    linewidth = 0.6,
+    alpha = 0.6,
+    inherit.aes = FALSE
+  ) +
   geom_line(
+    #limite haute de l'intervalle de confiance du réseau RCS
+    data = newdata_RCS,
+    aes(x = annee, y = upper),
+    linetype = "dotted",
+    colour = "#CD6839",
+    linewidth = 0.6,
+    alpha = 0.6,
+    inherit.aes = FALSE
+  ) +
+  geom_line(
+    #tendance du réseau RCS
     data = newdata_RCS,
     aes(x = annee, y = fit, colour = "Tendance générale des station RCS"),
     linewidth = 1,
-    linetype=2,
+    linetype = 2,
     inherit.aes = FALSE
   ) +
-  geom_point(colour = "#990099FF", size = 2.5
-             , alpha = 0.7) +
+  geom_point(
+    #données brutes de la station
+    colour = "#990099FF",
+    size = 2.5,
+    alpha = 0.7) +
   geom_line(
+    #Tendance de la station
     data = lines_by_station_RCS,
     aes(x = annee, y = fit, colour = "Tendance de la station"),
     linewidth = 1.3
   ) +
   scale_color_manual(
-   name = "Droites de tendance",
-   values = c(
-    "Tendance générale des station RCS" = "#CD6839",
-    "Tendance de la station" = "#990099FF"
-  ))+
-  scale_y_reverse()+
-  facet_wrap(~libelle_station, ncol=n_col_RCS, labeller = labeller(libelle_station = lab_facet_RCS))+
+    name = "Droites de tendance",
+    values = c(
+      "Tendance générale des station RCS" = "#CD6839",
+      "Tendance de la station" = "#990099FF"
+    )
+  ) +
+  scale_y_reverse() +
+  facet_wrap(
+    ~ libelle_station,
+    ncol = n_col_RCS,
+    labeller = labeller(libelle_station = lab_facet_RCS)
+  ) +
   labs(
     title = "Tendance temporelle des résultats de l'EQR Indice Poisson Rivière (IPR) pour les stations <span style='color:#CD6839;'>RCS</span>, et comparaison avec la tendance générale des stations <span style='color:#CD6839;'>RCS</span>.",
-    subtitle="Formule LMM = <i>resultat_eqr ~ annee_centree + (1 + annee_centree | code_station)</i>.<br>
+    subtitle = "Formule LMM = <i>resultat_eqr ~ annee_centree + (1 + annee_centree | code_station)</i>.<br>
     Les lignes en pointillés délimitent l'intervalle de confiance de la tendance générale du réseau **<span style='color:#CD6839;'>RCS</span>**.",
-    caption="**EQR** = Ecological Quality Ratio, il s'agit d'un ratio entre le résultat observé et une valeur de référence.<br>
+    caption = "**EQR** = Ecological Quality Ratio, il s'agit d'un ratio entre le résultat observé et une valeur de référence.<br>
 **<span style='color:#CD6839;'>RCS</span>**= Réseau de Contrôle de surveillance.<br>
 Une augmentation de la valeur de l'IPR correspond à la dégradation de l'état biologique.<br>
 L'IPR est étudié sur la periode 2007-2024.",
-    x = "Année",
-    y = "IPR"
+x = "Année",
+y = "IPR"
   ) +
   theme_bw() +
   theme(
-    plot.title=element_textbox_simple(
-      size = 20,           # Taille du texte
-      face = "bold",       # Gras
-      margin = margin(b = 10) ),# Marge en bas
-    plot.subtitle=element_markdown(
-      size = 16,           # Taille du texte
+    plot.title = element_textbox_simple(
+      size = 20,
+      # Taille du texte
+      face = "bold",
+      # Gras
+      margin = margin(b = 10)
+    ),
+    # Marge en bas
+    plot.subtitle = element_markdown(
+      size = 16,
+      # Taille du texte
       lineheight = 1.3,
-      margin = margin(b = 5) ),# Marge en bas
-    axis.title = element_text(size=16),
-    legend.title=element_text(size=16, face="bold"),
-    legend.text=element_text(size=14),
+      margin = margin(b = 5)
+    ),
+    # Marge en bas
+    axis.title = element_text(size = 16),
+    legend.title = element_text(size = 16, face = "bold"),
+    legend.text = element_text(size = 14),
     legend.position = "bottom",
     legend.title.position = "top",
-    strip.text = element_textbox_simple(size=11, margin = margin(10,3,7,3),halign = 0.5),
+    strip.text = element_textbox_simple(
+      size = 11,
+      margin = margin(10, 3, 7, 3),
+      halign = 0.5
+    ),
     strip.background = element_rect(fill = NA, color = "black"),
     plot.caption = element_textbox_simple(
       size = 13,
-      hjust = 0,      # 0 = aligné à gauche, 1 = à droite
+      hjust = 0,
+      # 0 = aligné à gauche, 1 = à droite
       lineheight = 1.2,
-      margin=margin(b=5),
-      fill = "white", 
+      margin = margin(b = 5),
+      fill = "white",
       box.color = "black",
       width = unit(0.80, "npc")
-  ))
+    )
+  )
 
 ggplot2::ggsave(
-      filename = file.path("../Output/1_Tendance_indice/03_LMM/IPR/Tendance_IPR_RCS.jpg"),
-      plot     = Tendance_IPR_RCS,
-      width    = largeur_plot_RCS,
-      height   = hauteur_plot_RCS)
+  filename = file.path(
+    "../Output/1_Tendance_indice/03_LMM/IPR/Tendance_IPR_RCS.jpg"
+  ),
+  plot     = Tendance_IPR_RCS,
+  width    = largeur_plot_RCS,
+  height   = hauteur_plot_RCS
+)
 ```
-
 
 
 # Sauvegarder tous les résultats
@@ -958,47 +849,36 @@ donnees_models_IPR <- donnees_models_IPR %>%
 export_pente_df_RRP <- coef(Modele_IPR_RRP)$code_station %>%
   as.data.frame() %>%
   tibble::rownames_to_column("code_station") %>%
-  rename(
-    intercept_log = `(Intercept)`,
-    pente_log = annee_c
-  ) %>%
-  mutate(
-    pente = exp(pente_log),
-    reseaux="RRP"
-  )%>% 
+  rename(intercept_log = `(Intercept)`, pente_log = annee_c) %>%
+  mutate(pente = exp(pente_log), reseaux = "RRP") %>%
   select(-pente_log, -intercept_log)
 
 export_pente_df_RCS <- coef(Modele_IPR_RCS)$code_station %>%
   as.data.frame() %>%
   tibble::rownames_to_column("code_station") %>%
-  rename(
-    intercept_log = `(Intercept)`,
-    pente_log = annee_c
-  ) %>%
-  mutate(
-    pente = exp(pente_log),
-    reseaux="RCS"
-  ) %>% 
+  rename(intercept_log = `(Intercept)`, pente_log = annee_c) %>%
+  mutate(pente = exp(pente_log), reseaux = "RCS") %>%
   select(-pente_log, -intercept_log)
 
 pentes_IPR <- bind_rows(export_pente_df_RRP, export_pente_df_RCS)
 
 # modification du signe des pentes de l'IPR pour qu'elles puissent être comparées avec les autres indices
-pentes_LMM_IPR<- BDD_IPR %>% 
-  dplyr::select(code_station, libelle_station, code_departement) %>%
+pentes_LMM_IPR <- BDD_IPR %>%
+  dplyr::select(code_station, code_sta_pp, libelle_station, code_departement) %>%
   dplyr::distinct() %>%
   dplyr::left_join(pentes_IPR, by = "code_station") %>%
   mutate(
-      pente = round(-(pente-1), 4), # obtenir info de pente positive ou négative
-      libelle_indice="IPR"
-      ) 
+    pente = round(-(pente - 1), 4),
+    # obtenir info de pente positive ou négative
+    libelle_indice = "IPR"
+  ) 
 ```
 
 ```{r}
 lines_by_station_IPR <- bind_rows(lines_by_station_RRP, lines_by_station_RCS)
 
-lines_by_station_IPR <- lines_by_station_IPR %>% 
-  mutate(libelle_indice="IPR") %>% 
+lines_by_station_IPR <- lines_by_station_IPR %>%
+  mutate(libelle_indice = "IPR") %>%
   select(-fit_log)
 ```
 

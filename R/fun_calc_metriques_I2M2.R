@@ -45,7 +45,7 @@ funTranscodeI2M2<- function(Table, Transcodage=table_transcodage_I2M2) {
 
 
 id_cols <- c(
-  "code_station","libelle_station","code_departement","reseaux",
+  "code_station","code_sta_pp","libelle_station","code_departement","reseaux",
   "code_prelevement","date_prelevement","annee",
   "code_support","libelle_support",
   "code_indice","libelle_indice",
@@ -53,71 +53,6 @@ id_cols <- c(
 )
 
 ## Fonction permettant de calculer les effectifs par regroupement de bocaux
-funEffBocaux <- function(Table) {
-  ungroup(Table) %>%
-    (function(df) {
-      bind_rows(
-        filter(df, code_lot %in% c("A", "B", 1, 2))         %>%
-          mutate(code_lot = "AB")                           %>%
-          group_by(code_station,
-                   libelle_station,
-                   code_departement,
-                   reseaux,
-                   code_prelevement,
-                   date_prelevement,
-                   annee,
-                   code_support,
-                   libelle_support,
-                   code_indice,
-                   libelle_indice,
-                   Typologie,
-                   Typologie_clean,
-                   libelle_typologie,
-                   code_taxon_sandre,
-                   code_lot, CODE_METHODE)  %>%
-          summarise(resultat_taxon   = sum(resultat_taxon)),
-        filter(df, code_lot %in% c("B", "C", 2, 3))         %>%
-          mutate(code_lot = "BC")                           %>%
-          group_by(code_station,
-                   libelle_station,
-                   code_departement,
-                   reseaux,
-                   code_prelevement,
-                   date_prelevement,
-                   annee,
-                   code_support,
-                   libelle_support,
-                   code_indice,
-                   libelle_indice,
-                   Typologie,
-                   Typologie_clean,
-                   libelle_typologie,
-                   code_taxon_sandre,
-                   code_lot, CODE_METHODE)  %>%
-          summarise(resultat_taxon   = sum(resultat_taxon)),
-        filter(df, code_lot %in% c("A", "B", "C", 1, 2, 3)) %>%
-          mutate(code_lot = "ABC")                          %>%
-          group_by(code_station,
-                   libelle_station,
-                   code_departement,
-                   reseaux,
-                   code_prelevement,
-                   date_prelevement,
-                   annee,
-                   code_support,
-                   libelle_support,
-                   code_indice,
-                   libelle_indice,
-                   Typologie,
-                   Typologie_clean,
-                   libelle_typologie,
-                   code_taxon_sandre,
-                   code_lot, CODE_METHODE)  %>%
-          summarise(resultat_taxon   = sum(resultat_taxon))
-      )
-    })           %>%
-    filter(resultat_taxon > 0)
-}
 
 funEffBocaux_hubeau <- function(Table) {
   Table %>%
@@ -132,6 +67,7 @@ funEffBocaux_hubeau <- function(Table) {
           dplyr::mutate(code_lot = "AB") %>%
           dplyr::group_by(
             code_station,
+            code_sta_pp,
             libelle_station,
             code_departement,
             reseaux,
@@ -158,6 +94,7 @@ funEffBocaux_hubeau <- function(Table) {
           dplyr::mutate(code_lot = "BC") %>%
           dplyr::group_by(
             code_station,
+            code_sta_pp,
             libelle_station,
             code_departement,
             reseaux,
@@ -184,6 +121,7 @@ funEffBocaux_hubeau <- function(Table) {
           dplyr::mutate(code_lot = "ABC") %>%
           dplyr::group_by(
             code_station,
+            code_sta_pp,
             libelle_station,
             code_departement,
             reseaux,
@@ -218,6 +156,7 @@ funMetriquesI2M2 <- function(Table, Base=Base_I2M2) {
   Table2 <- Table %>% 
     group_by(
       code_station,
+      code_sta_pp,
       libelle_station,
       code_departement,
       reseaux,
@@ -235,6 +174,7 @@ funMetriquesI2M2 <- function(Table, Base=Base_I2M2) {
       CODE_METHODE,
       code_taxon_sandre
       ) %>%
+    filter(code_lot== "ABC") %>% 
     summarise(
       resultat_taxon = sum(resultat_taxon, na.rm = TRUE),.groups = "drop")
   
@@ -246,9 +186,9 @@ funMetriquesI2M2 <- function(Table, Base=Base_I2M2) {
       filter(!is.na(CODE_METHODE)) %>%
       summarise(
         `Nombre de taxons contributifs` = n_distinct(CODE_METHODE),
-        `Abondance totale esp contributives`= sum(resultat_taxon),
+        `Abondance totale esp contributives`= sum(resultat_taxon, na.rm = TRUE),
         `Diversite de Shannon esp contributives` = {
-          p <- resultat_taxon / sum(resultat_taxon)
+          p <- resultat_taxon / sum(resultat_taxon, na.rm = TRUE)
           p <- p[p > 0]
           - sum(p * log(p))
         },
@@ -266,7 +206,7 @@ funMetriquesI2M2 <- function(Table, Base=Base_I2M2) {
       filter(is.na(CODE_METHODE)) %>%
       summarise(
         `Nombre de taxons non contributifs` = n_distinct(code_taxon_sandre),
-        `Abondance totale esp non contributives`= sum(resultat_taxon),
+        `Abondance totale esp non contributives`= sum(resultat_taxon, na.rm = TRUE),
         .groups = "drop"
       )
   }
@@ -277,10 +217,10 @@ funMetriquesI2M2 <- function(Table, Base=Base_I2M2) {
       group_by(
         across(all_of(id_cols))) %>%
       summarise(
-        `Abondance totale`= sum(resultat_taxon),
+        `Abondance totale`= sum(resultat_taxon, na.rm = TRUE),
         `Richesse specifique` = n_distinct(code_taxon_sandre),
         `Diversite de Shannon` = {
-          p <- resultat_taxon / sum(resultat_taxon)
+          p <- resultat_taxon / sum(resultat_taxon, na.rm = TRUE)
           p <- p[p > 0]
           - sum(p * log(p))
         },
@@ -304,6 +244,7 @@ funMetriquesI2M2 <- function(Table, Base=Base_I2M2) {
       left_join(Base, by = c("CODE_METHODE" = "cd_taxon")) %>%
       group_by(
         code_station,
+        code_sta_pp,
         libelle_station,
         code_departement,
         reseaux,
@@ -327,6 +268,7 @@ funMetriquesI2M2 <- function(Table, Base=Base_I2M2) {
       filter(!is.na(SCORE)) %>%
       group_by(
         code_station,
+        code_sta_pp,
         libelle_station,
         code_departement,
         reseaux,

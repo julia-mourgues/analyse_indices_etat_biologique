@@ -51,10 +51,7 @@ source(here::here ("R","fun_calc_metriques_IPR.R"))
 # Table contenant les informations relatives au station (nom et localisation)
 
 ```{r}
-names(aspe_stations)
-names(hydrobio_stations_clean)
-
-info_stations <- aspe_stations %>% 
+BDD_info_stations <- aspe_stations %>% 
   left_join(hydrobio_stations_clean %>% 
               st_drop_geometry() %>% 
               select(code_station_hydrobio,
@@ -68,14 +65,7 @@ info_stations <- aspe_stations %>%
 ```
 
 
-## Sauvegarder le résutat au format .rds
-
-```{r}
-saveRDS(info_stations, here("Data/clean_data","BDD_info_stations.rds"))
-```
-
-
-# Base de données contenant la taxonomie
+# Table contenant la taxonomie
 Les script 011 et 012 nous ont permis de télécharger deux tables contenant les données de taxonomie pour ASPE et hydrobio. Nous partons donc de ces 2 tables.
 Nous allons devoir harmoniser les variables avant d'effectuer la jointure
 
@@ -85,27 +75,24 @@ Nous allons devoir harmoniser les variables avant d'effectuer la jointure
 ```{r}
 aspe_taxo_light <- aspe_taxo %>%
   filter(sta_code_sandre %in% mes_stations_sans_RHP) %>%
-  mutate(
+  mutate( #création de variables qui nous permettrons de faire une jointure
     code_support = "4",
-    #création de variables qui nous permettrons de faire une jointure
     libelle_support = "Poissons",
     code_indice = "7036",
     libelle_indice = "IPR",
-    type_resultat="NbrTax"
+    type_resultat="NbrTax" #NbrTax correspond à une abondance
   ) %>%
   dplyr::select(-sta_id, 
                 -pop_id,
-                -lop_id,
                 -tlo_id,
                 -tyl_id,
-                -pre_id, 
-                -code_sta_pp, 
+                -pre_id,  
                 -code_sandre_pp,
                 -ends_with("_x"),
                 -ends_with("_y"),
-                -esp_nom_commun,
                 -opi_version_script,
                 -pop_bas_id,
+                esp_nom_commun,
                 -bas_libelle_sandre)%>% 
   mutate(esp_id=as.character(esp_id))
 
@@ -166,12 +153,14 @@ hydrobio_taxo_light2 <- hydrobio_taxo_light %>%
   mutate(reseaux=case_when(
     code_station =="03245970"~"RCS",
     TRUE ~ reseaux
-  ))
+  )) %>% 
+  distinct()
 
 
 aspe_taxo_light2 <- aspe_taxo_light %>% 
   rename(any_of(map_aspe_taxo))%>%
-  mutate(code_prelevement = as.character(code_prelevement))
+  mutate(code_prelevement = as.character(code_prelevement))%>% 
+  distinct()
 ```
 
 ### Effectuer la jointure
@@ -181,7 +170,7 @@ BDD_taxo <- bind_rows(hydrobio_taxo_light2, aspe_taxo_light2) %>%
   rename(code_taxon_sandre = code_taxon) %>%
   mutate(
     code_taxon_sandre = as.numeric(code_taxon_sandre),
-    libelle_taxon = libelle_taxon %>% 
+    libelle_taxon = libelle_taxon %>% #Enlever las caractères spéciaux
       str_remove(" var\\..*$") %>% 
       str_remove(" abnormal form.*$") %>% 
       str_remove(" f\\..*$") %>% 
@@ -190,59 +179,70 @@ BDD_taxo <- bind_rows(hydrobio_taxo_light2, aspe_taxo_light2) %>%
       code_departement== "28" ~ "27",
       TRUE~code_departement
     )
-  )
+  ) %>% 
+  group_by(code_station, annee, libelle_support) %>%
+  filter(date_prelevement==max(date_prelevement))
 ```
-
 
 
 ### Mettre à jour les codes et appellations taxons
-Pour cette étape nous alons diviser le tableau en 4 pour traiter les support biologiques séparément.
-
-```{r}
-BDD_taxo_IPR <- BDD_taxo %>% 
-  filter(code_support==4) %>% 
-  funRegroup() %>% 
-  mutate(across(c(Typologie_clean, libelle_typologie), ~ as.character(unname(.x))))
-```
+Pour cette étape nous allons diviser le tableau en 4 pour traiter les supports biologiques séparément.
 
 
 ```{r}
-BDD_taxo_IBMR <- BDD_taxo %>% 
-  filter(code_support==27) %>% 
- dplyr::select(-code_taxon_lettre) %>% 
-  funTranscodeIBMR() %>% 
-  funIBMR() %>% 
-  funKi() %>% 
-  mutate(across(c(Typologie_clean, libelle_typologie), ~ as.character(unname(.x))))
-
+BDD_taxo_IPR <- BDD_taxo %>%
+  filter(code_support == 4, 
+         code_taxon_lettre != "CYP") %>% #On supprime les codes CYP car ne correspondent pas à une espèce
+  distinct() %>%
+  funRegroup() %>% #Fonction permettant de regrouper les codes taxons finissant par X (ex: LPX vers LPP)
+  mutate(across(
+    c(Typologie_clean, libelle_typologie),
+    ~ as.character(unname(.x))
+  ))
 ```
 
 ```{r}
-BDD_taxo_IBD <- BDD_taxo %>% 
-  filter(code_support==10) %>% 
- dplyr::select(-code_taxon_lettre) %>% 
-  FunParamsIBD()%>% 
-  rename(code_taxon_lettre=AFNOR) %>% 
-  mutate(across(c(Typologie_clean, libelle_typologie), ~ as.character(unname(.x))))
+BDD_taxo_IBMR <- BDD_taxo %>%
+  filter(code_support == 27) %>%
+  dplyr::select(-code_taxon_lettre) %>%
+  funTranscodeIBMR() %>% # mettre à jour les codes taxons
+  funIBMR() %>% #associer les scores trophiques et les coefficients de stenoecie aux taxons
+  funKi() %>% #calculer les classes d'abondance pour chaque taxon (ki)
+  mutate(across(
+    c(Typologie_clean, libelle_typologie),
+    ~ as.character(unname(.x))
+  ))
 ```
 
 ```{r}
-BDD_taxo_I2M2 <- BDD_taxo %>% 
-  filter(code_support==13) %>% 
-  funTranscodeI2M2(table_transcodage_I2M2) %>% 
-  funEffBocaux_hubeau() %>% 
-  mutate(across(c(Typologie_clean, libelle_typologie), ~ as.character(unname(.x))))
+BDD_taxo_IBD <- BDD_taxo %>%
+  filter(code_support == 10) %>%
+  dplyr::select(-code_taxon_lettre) %>%
+  FunParamsIBD() %>%
+  rename(code_taxon_lettre = AFNOR) %>%
+  mutate(across(
+    c(Typologie_clean, libelle_typologie),
+    ~ as.character(unname(.x))
+  ))
+```
+
+```{r}
+BDD_taxo_I2M2 <- BDD_taxo %>%
+  filter(code_support == 13) %>%
+  funTranscodeI2M2() %>% #mettre à jour les codes taxons
+  funEffBocaux_hubeau() %>% #calculer les effectifs par regroupement de bocaux, pour calcul métriques ASPT, polyvoltine et ovovivipare
+  mutate(across(
+    c(Typologie_clean, libelle_typologie),
+    ~ as.character(unname(.x))
+  ))
 ```
 
 ## Effectuer une jointure entre les 4 tables
 ```{r}
-BDD_taxo_final <- bind_rows(BDD_taxo_IPR, BDD_taxo_IBMR, BDD_taxo_IBD, BDD_taxo_I2M2)
-```
-
-## Sauvegarder le résutat au format .rds
-
-```{r}
-saveRDS(BDD_taxo_final, here("Data/clean_data","BDD_taxo.rds"))
+BDD_taxo_final <- bind_rows(BDD_taxo_IPR, 
+                            BDD_taxo_IBMR, 
+                            BDD_taxo_IBD, 
+                            BDD_taxo_I2M2)
 ```
 
 
@@ -270,7 +270,6 @@ aspe_metriques_light <- aspe_metriques %>%
                 -pop_id,
                 -obj_id,
                 -niq_libelle,
-                -code_sta_pp, 
                 -code_sandre_pp,
                 -operateur_peche,
                 -ope_surface_calculee,
@@ -292,11 +291,21 @@ map_aspe_metriques <- c(
 )
 
 aspe_metriques_light2 <- aspe_metriques_light %>%
-  rename(any_of(map_aspe_metriques))%>%
+  rename(any_of(map_aspe_metriques)) %>%
   mutate(code_prelevement = as.character(code_prelevement)) %>%
-  pivot_longer(cols = c(ner_observe, nel_observe, nte_observe, dit_observe, dio_observe, dii_observe, dti_observe),
-      names_to = "libelle_metrique",
-      values_to = "resultat_metrique")
+  pivot_longer(
+    cols = c(
+      ner_observe,
+      nel_observe,
+      nte_observe,
+      dit_observe,
+      dio_observe,
+      dii_observe,
+      dti_observe
+    ),
+    names_to = "libelle_metrique",
+    values_to = "resultat_metrique"
+  )
 
 
 aspe_metriques_light2$libelle_metrique <- forcats::fct_recode(
@@ -315,17 +324,16 @@ aspe_metriques_light2$libelle_metrique <- forcats::fct_recode(
 
 
 ```{r}
- BDD_metriques_IPR <- BDD_taxo_IPR %>%
+#IPR
+BDD_metriques_IPR <- BDD_taxo_IPR %>%
    funMetriquesIPR() %>%
    bind_rows(aspe_metriques_light2)
-```
 
-```{r}
+#I2M2
 BDD_metriques_I2M2 <- bind_rows(
   funMetriquesI2M2(BDD_taxo_I2M2))
-```
 
-```{r}
+#IBMR
 BDD_taxo_IBMR2<-BDD_taxo_IBMR %>% 
   funRegroupeIBMR()
 
@@ -333,9 +341,8 @@ BDD_metriques_IBMR <- bind_rows(
   funComplementaireIBMR(BDD_taxo_IBMR2),
   funMetriquesIBMR(BDD_taxo_IBMR2)
 )
-```
 
-```{r}
+#IBD
 BDD_metriques_IBD <- bind_rows(
   funMetriquesIBD(BDD_taxo_IBD))
 ```
@@ -343,20 +350,19 @@ BDD_metriques_IBD <- bind_rows(
 
 ## Effectuer la jointures des tables contenant les métriques
 ```{r}
-BDD_metriques <- bind_rows(BDD_metriques_IPR,BDD_metriques_I2M2,BDD_metriques_IBMR,BDD_metriques_IBD)
-BDD_metriques <- BDD_metriques %>% 
-  mutate(resultat_metrique=round(resultat_metrique,3),
-         code_departement= case_when(
-         code_departement== "28" ~ "27",
-         TRUE~code_departement))
+BDD_metriques <- bind_rows(BDD_metriques_IPR,
+                           BDD_metriques_I2M2,
+                           BDD_metriques_IBMR,
+                           BDD_metriques_IBD)
+
+BDD_metriques <- BDD_metriques %>%
+  mutate(
+    resultat_metrique = round(resultat_metrique, 3),
+    code_departement = case_when(code_departement == "28" ~ "27", 
+                                 TRUE ~ code_departement)
+  )
 ```
 
-
-## Sauvegarder le résutat au format .rds
-
-```{r}
-saveRDS(BDD_metriques, here("Data/clean_data","BDD_metriques.rds"))
-```
 
 
 # Base de données contenant les indices
@@ -383,7 +389,6 @@ aspe_indices_light <- aspe_indices %>%
                 -pop_id, 
                 -ope_surface_calculee,
                 -code_sandre_pp,
-                -code_sta_pp,
                 -obj_id,
                 -cli_borne_inf,
                 -cli_borne_sup,
@@ -442,24 +447,23 @@ map_aspe <- c(
   coord_point_x= "pop_coordonnees_x",
   coord_point_y= "pop_coordonnees_y",
   libelle_qualification= "niq_libelle"
-
 )
 ```
 
 Nous appliquons ces dictionnaires à nos tableaux
 
 ```{r}
-hydrobio_stations_indices_light <- hydrobio_stations_indices_light %>% 
-  rename(any_of(map_hydrobio)) %>% 
-  mutate(coord_point_x = as.numeric(coord_point_x),
-         coord_point_y = as.numeric(coord_point_y),
-        reseaux=case_when(
-          code_station =="03245970"~"RCS",
-          TRUE ~ reseaux))
+hydrobio_stations_indices_light <- hydrobio_stations_indices_light %>%
+  rename(any_of(map_hydrobio)) %>%
+  mutate(
+    coord_point_x = as.numeric(coord_point_x),
+    coord_point_y = as.numeric(coord_point_y),
+    reseaux = case_when(code_station == "03245970" ~ "RCS", TRUE ~ reseaux)
+  )
 
 
-aspe_indices_light <- aspe_indices_light %>% 
-  rename(any_of(map_aspe))%>%
+aspe_indices_light <- aspe_indices_light %>%
+  rename(any_of(map_aspe)) %>%
   mutate(code_prelevement = as.character(code_prelevement))
 ```
 
@@ -472,31 +476,26 @@ BDD_indices <- bind_rows(hydrobio_stations_indices_light, aspe_indices_light)
 #### Faire les derniers arrangement des données
 
 ```{r}
-BDD_indices <- BDD_indices %>% 
+BDD_indices <- BDD_indices %>%
   mutate(
     annee = as.numeric(annee),
-    cycle_DCE = cycle_DCE(var_temp = annee),
-    code_departement= case_when(
-      code_departement== "28" ~ "27",
-      TRUE~code_departement
-    )) %>%
+    cycle_DCE = cycle_DCE(var_temp = annee), #associer le cycle DCE correspondant
+    code_departement = case_when(code_departement == "28" ~ "27", 
+                                 TRUE ~ code_departement)
+  ) %>%
   group_by(code_station, code_support, code_indice, annee) %>%
-  filter(date_prelevement == max(date_prelevement)) %>% 
-  distinct(date_prelevement, .keep_all = TRUE) %>% 
+  filter(date_prelevement == max(date_prelevement)) %>% #garder une seule valeur par année et par indice pour chaque station
+  distinct(date_prelevement, .keep_all = TRUE) %>%
   ungroup()
 ```
 
-### Sauvegarder le résutat au format .rds
 
-```{r}
-saveRDS(BDD_indices, here("Data/clean_data","BDD_indices.rds"))
-```
 
 # Base de données au format large indices et métriques
 
 ```{r}
 id_colonne <- c(
-    "code_station","libelle_station","code_departement","reseaux","date_prelevement", "annee", "code_prelevement","Typologie","Typologie_clean","libelle_typologie", "code_support", "libelle_support"
+    "code_station","code_sta_pp","libelle_station","code_departement","reseaux","date_prelevement", "annee", "code_prelevement","Typologie","Typologie_clean","libelle_typologie", "code_support", "libelle_support"
   )
 ```
 
@@ -516,8 +515,13 @@ BDD_indices_metriques <- left_join (BDD_indices,
                                     by=id_colonne )
 ```
 
-### Sauvegarder le résutat au format .rds
+# Sauvegarder les tables au format .Rdata
 
 ```{r}
-saveRDS(BDD_indices_metriques, here("Data/clean_data","BDD_indices_metriques.rds"))
+save(BDD_info_stations,
+     BDD_indices,
+     BDD_taxo_final,
+     BDD_metriques,
+     BDD_indices_metriques,
+     file = "../Data/clean_data/BDD_etude.rda")
 ```

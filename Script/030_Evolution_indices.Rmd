@@ -1,5 +1,5 @@
 ---
-title: "Visualiser l'évolution des indices et de leurs métriques."
+title: "Visualiser l'évolution des indices."
 author: "Julia"
 date: "2026-02-11"
 output: html_document
@@ -32,7 +32,7 @@ source(here::here("R","fun_table_mk_sen.R"))
 
 ## Chargement des données
 ```{r}
-BDD_indices <- readRDS(here("Data/clean_data", "BDD_indices.rds"))
+load(here("Data/clean_data", "BDD_etude.rda"))
 mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds")) 
 valeurs_seuils <- readRDS(here("Data/clean_data", "valeurs_seuils_indices.rds"))
 ```

@@ -26,7 +26,7 @@ library(here)
 load(here("Data/raw_data", "hydrobio_data.rda"))
 Base_station_active <- readRDS(here("Data/clean_data", 
                                     "Base_station_active_clean.rds")) #contient des informations supplémentaires du labo Hydrobio
-stations_typologie <- readRDS("~/Git/analyse_indices_etat_biologique/Data/clean_data/stations_typologie.rds")
+stations_typologie <- readRDS(here("Data/clean_data","stations_typologie.rds"))
 ```
 
 # Récupérer les algorithmes SEEE
