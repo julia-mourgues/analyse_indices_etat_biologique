@@ -1,6 +1,10 @@
+#' Fonction permettant de générer un tableau rassemblant des informations 
+#' générales sur la station étudiée
+
 create_table <- function(data,
                          id_station){
   
+  #filtrer les données
   data_2 <- data %>% 
     filter(sta_code_sandre==id_station) %>% 
     mutate(proj="Lambert93") %>% 
@@ -39,6 +43,7 @@ create_table <- function(data,
       values_to = "valeur"
     )
   
+  #créer le tableau
   info_sta <- data_filtre %>%
     gt() %>% 
     tab_options(

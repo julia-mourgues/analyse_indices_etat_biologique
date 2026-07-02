@@ -1,0 +1,200 @@
+---
+output:
+  pdf_document:
+    
+    latex_engine: xelatex
+    toc: false
+  word_document:
+    toc: false
+
+header-includes:
+  - \usepackage{fontspec}
+  - \setmainfont{Calibri}
+  - \usepackage{titlesec}
+  - \titlespacing*{\section}{0pt}{1em}{0.5em}
+  - \usepackage{graphicx}
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhf{}
+  - \usepackage{geometry}
+  - \geometry{top=2cm, bottom=2.5cm}
+  - \setlength{\footskip}{13pt}
+
+  - \renewcommand{\headrulewidth}{0pt}
+  - \renewcommand{\footrulewidth}{1pt}
+  - |
+    \makeatletter
+    \let\ps@plain\ps@fancy
+    \makeatother
+
+  - \fancyfoot[L]{`r params$auteur`}
+  - \fancyfoot[C]{\thepage}
+  - \fancyfoot[R]{`r format(Sys.time(), '%d %B %Y')`}
+  - |
+    \fancypagestyle{firstpage}{
+      \fancyhf{}
+      \fancyhead[L]{\includegraphics[width=4cm]{logo_OFB_v2_2.png}}
+      \setlength{\headheight}{60pt}
+      \fancyfoot[L]{`r params$auteur`}
+      \fancyfoot[C]{\thepage}
+      \fancyfoot[R]{`r format(Sys.time(), '%d %B %Y')`}
+      \renewcommand{\headrulewidth}{0pt}
+      \renewcommand{\footrulewidth}{1pt}
+    }
+
+  - \usepackage{float}
+  - \usepackage{placeins}
+
+params:
+  code_station: ""
+  auteur: ""
+  libelle_station: ""
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      warning = FALSE,
+                      message = FALSE,
+                      fig.path ="figures/",
+                      fig.pos = "H"
+                      )
+```
+
+\thispagestyle{firstpage}
+
+\vspace{0.5cm}
+
+\begin{center}
+{\LARGE \textbf{Fiche station - `r params$libelle_station` (`r params$code_station`)}}
+\end{center}
+
+\vspace{0cm}
+
+# Préambule
+Cette fiche opérationnelle présente l'évolution des différents indices d'état biologique des cours d'eau étudiés dans le cadre de la Directive Cadre sur l'Eau.  
+Sur chaque station suivie en Normandie dans le cadre de la pêche scientifique à l'électricité, trois autres communautés biologiques sont également échantillonnées : macrophytes, macroinvertébrés aquatiques et diatomées.  
+Les prélèvements effectués permettent ensuite de calculer les indices d'état biologique suivants : Indice Poisson Rivière (IPR), Indice Biologique Macrophyte en Rivière (IBMR), Indice Macro-invertébrés Multimétrique (I2M2) et Indice Biologique Diatomées (IBD).  
+Ces indices sont normalisés, c'est à dire que leur calcul prend en compte des valeurs de référence attendues en situation non impactée. Ils donnent ensuite des résultats sous forme de classes d'état biologique, allant de « Très bon » à « Mauvais ».
+
+```{r chargement_packages, message=FALSE, warning=FALSE, echo = FALSE}
+library(tidyverse)
+library(sf)
+library(ggtext)
+library(gt)
+library(ggh4x)
+library(colorspace)
+library(here)
+library(glue)
+library(ggrepel)
+library(tinytex)
+```
+
+```{r chargement_donnees, message=FALSE, warning=FALSE, echo = FALSE}
+load(here("Data/clean_data", "BDD_etude.rda"))
+load(here("Data/clean_data", "results_LMM.rda"))
+
+stations_envt <- readRDS(here("Data/clean_data", "context_stations_complet.rds"))
+element_declassant <- readRDS(here("Data/clean_data", "table_element_declassant.rds"))
+valeurs_seuils <- readRDS(here("Data/clean_data", "valeurs_seuils_indices.rds"))
+```
+
+
+```{r chargement_fonctions, message=FALSE, warning=FALSE, echo=FALSE}
+source(here::here("R", "fun_classe_ecologique.R"))
+source(here::here("R/fiches_stations", "fun_table_info_station.R"))
+source(here::here("R/fiches_stations", "fun_graph_landuse.R"))
+source(here::here("R/fiches_stations", "fun_table_element_declassant.R"))
+source(here::here("R/fiches_stations", "fun_graph_lmm.R"))
+source(here::here("R/fiches_stations", "fun_graph_metriques.R"))
+source(here::here("R/fiches_stations", "fun_carte_localisation.R"))
+```
+
+
+# 1. Informations sur la station
+
+```{r Info_station, echo=FALSE, results='asis'}
+a <- carte_station(id_station = params$code_station)
+
+b <- create_table(
+  data = BDD_info_stations,
+  id_station = params$code_station
+)
+
+# ✅ fichiers temporaires
+map_path <- tempfile(fileext = ".png")
+tab_path <- tempfile(fileext = ".png")
+
+ggplot2::ggsave(map_path, plot = a, width = 6, height = 4)
+gt::gtsave(b, tab_path)
+
+cat("\\begin{minipage}{0.5\\textwidth}\n")
+map_path_tex <- gsub("\\\\", "/", map_path)
+cat(paste0("\\includegraphics[width=\\linewidth]{", map_path_tex, "}\n"))
+cat("\\end{minipage}\n")
+
+cat("\\hfill\n")
+
+cat("\\begin{minipage}{0.5\\textwidth}\n")
+tab_path_tex <- gsub("\\\\", "/", tab_path)
+cat(paste0("\\includegraphics[width=\\linewidth]{", tab_path_tex, "}\n"))
+cat("\\end{minipage}\n")
+```
+
+
+# 2. Proportions des types d'occupation du sol dans un périmètre de 2,5km autour de la station
+\vspace{-0.5cm}
+```{r occupation_sol, fig.width=8, fig.height=3.5, out.width="0.8\\textwidth", fig.align='center'}
+landuse(data=stations_envt,
+        id_station=params$code_station)
+```
+\vspace{0cm}
+# 3. Etat biologique de la station au cours du temps
+\vspace{-0.5cm}
+```{r Etat_biologique, echo=FALSE, out.width="0.9\\textwidth", fig.align='center'}
+
+c <- tab_element_declassant(
+  data = element_declassant,
+  id_station = params$code_station
+)
+
+tab2_path <- tempfile(fileext = ".png")
+
+tab2_path_tex <- gsub("\\\\", "/", tab2_path)
+
+gt::gtsave(c, tab2_path)
+
+knitr::include_graphics(tab2_path_tex)
+```
+
+# 4. Tendance temporelle des indices d'état biologique
+
+```{r Tendances_indices, fig.width=14, fig.height=10, out.width="1\\textwidth", fig.align='center'}
+graph_lmm(data=BDD_indices,
+          tendances_RCS = valeurs_lmm_RCS,
+          tendances_RRP = valeurs_lmm_RRP,
+          tendances_stations = valeurs_lmm_station,
+          tab_valeurs_seuils=valeurs_seuils,
+          id_station= params$code_station)
+```
+
+
+# 5. Evolution des métriques de diversité
+
+4 métriques de diversité ont été calculées pour chaque compartiment biologique:  
+- **Abondance totale** = nombre total d'individus échantillonnés;  
+- **Richesse spécifique** = nombre total d'espèces;  
+- **Indice de diversité de Shannon** = mesure de la diversité des espèces au sein d’une communauté en prenant en compte la proportion de chaque espèce dans la communauté. Lorsque cet indice est égal à 0, cela signifie que tous les individus appartiennent à la même espèce.  
+- **Indice d’équitabilité de Piélou** = mesure de la répartition des espèces au sein d’une communauté donnée. lorsque cet indice est proche de 0, cela traduit une dominance de la communauté par une espèce, lorsqu'il est proche de 1 ça traduit une distribution des individus uniforme entre toutes les espèces.
+
+
+L'abondance des macrophytes est exprimée en % de recouvrement et correspond à la somme des recouvrements spécifiques. Cette valeur peut dépasser 100% car les strates végétales peuvent se chevaucher.  
+L'abondance des diatomées est biaisée car les comptages sont arrétés au-delà de 400 individus.
+
+```{r metriques, fig.width=16, fig.height=18,  out.width="1\\textwidth", fig.align='center'}
+graph_metriques(data=BDD_metriques,
+                id_station=params$code_station)
+```
+
+

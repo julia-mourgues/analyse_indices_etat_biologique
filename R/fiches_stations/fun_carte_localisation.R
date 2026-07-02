@@ -1,3 +1,6 @@
+#'Fonction permettant de générer la carte présentant la localisation de la station 
+#'utilisée en partie 1 de la fiche station
+
 ## Projection Lambert 93
 crs_lambert93 <- sf::st_crs(2154)
 
@@ -43,7 +46,7 @@ cours_eau <-
   sf::read_sf(
     "\\\\ad.intra\\dfs\\COMMUNS\\REGIONS\\nor\\DR\\OFB\\SIG\\DR\\REFERENTIEL\\BD CARTHAGE\\NOR_COURS_D_EAU.gpkg"
   ) %>% 
-  dplyr::filter(CLASSE <= 4)
+  dplyr::filter(CLASSE <= 4) #sélection sur le rang du cours d'eau pour simplifier la carte
 
 
 ## couche SIG des station sur le réseau
@@ -56,15 +59,17 @@ stations_all <-
   dplyr::select(station=`Code Station SANDRE`, nom = `LIBELLE SANDRE`) 
 
 
+#construire la carte
 carte_station <- function (id_station){
   
+  #filtrer la station demandée
   stations <- stations_all%>% 
     dplyr::filter(station==id_station)
   
   coords <- st_coordinates(stations)
   stations_lab <- cbind(stations, coords)
 
-  
+  #identifier ledépartement auquel appartient la station
   dept_station <-
     regions_FR[st_intersects(regions_FR, stations, sparse = FALSE), ]
 
@@ -112,9 +117,10 @@ carte_station <- function (id_station){
       width_hint = 0.2
     )
   
-  
+  #carte avec la station
   map_stations <-
     base_map +
+    #point pour localisation d ela station
     ggplot2::geom_sf(
       data = stations,
       col = 'darkgreen',
@@ -123,6 +129,7 @@ carte_station <- function (id_station){
       alpha = 0.9,
       shape=19
     ) +  
+    #etiquette avec code_station
     ggrepel::geom_label_repel(
       data = stations_lab,
       ggplot2::aes(
