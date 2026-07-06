@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Ce script permet de modéliser l'évolution des proportion des différents états écologiques en fonction de l'indice étudié.
+Ce script permet de modéliser l'évolution des proportions des différents états biologiques en fonction de l'indice étudié.
 
 Questions de départ:
 - Est‑ce que l'état écologique se dégrade ou s'améliore au fil des années ?
@@ -31,8 +31,7 @@ library(ggalluvial)
 ## Chargement des données
 
 ```{r}
-#BDD_cycle_indices <- readRDS(here("Data/clean_data", "BDD_cycle_indices.rds"))
-BDD_indices <- readRDS(here("Data/clean_data", "BDD_indices.rds"))
+load(here("Data/clean_data", "BDD_etude.rda"))
 mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
 ```
 
@@ -41,6 +40,7 @@ mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
 source(here::here("R", "fun_graph_barplot_proportion.R"))
 source(here::here("R","fun_clmm_indices.R"))
 source(here::here("R","fun_graph_diagramme_alluvial.R"))
+source(here::here("R","fun_classe_ecologique.R"))
 ```
 
 
@@ -66,9 +66,11 @@ data_classe <- BDD_indices %>%
 ```
 
 
-# 1.Générer les barplot 
+# Etat biologique des stations au cours du temps
 
-Graphiques présentant le nombre de stations par classe écologique 
+## 1.Générer les barplot 
+
+Barplots présentant le nombre de stations par classe écologique 
 ```{r}
 #pour les stations des réseaux RRP
 barplot_nombre(data=data_classe,
@@ -80,9 +82,9 @@ barplot_nombre(data=data_classe,
 ```
 
 
-# 2.Diagrammes alluviaux - flux entre classe écologiques au cours du temps et par indices
+## 2.Diagrammes alluviaux - flux entre classes d'état biologique au cours du temps et par indices
 
-On va générer les diagrammes pour différentes combinaisons de réseaux
+On va générer les diagrammes alluviaux pour les deux réseaux séparemment
 ```{r}
 diag_alluvial(
   data = data_classe,
@@ -98,7 +100,7 @@ diag_alluvial(
 ```
 
 
-# 3.Régression logistique ordinale avec effets aléatoires, calculé séparément pour chaque indices 
+## 3.Régression logistique ordinale avec effets aléatoires, calculé séparément pour chaque indices 
 ```{r}
 #Ordonner les niveau de la variable libelle_classe
 data_classe$libelle_classe <- data_classe$libelle_classe %>%
@@ -114,7 +116,7 @@ data_reg <- data_classe %>%
 ```
 
 
-## Définir le model ordinal
+### Définir le model ordinal
 
 On considère comme effet fixes les variables suivantes:
 - réseaux (car seulement 2 niveaux et on veut les comparer entre eux)
@@ -125,7 +127,7 @@ On considère comme effet aléatoires les variables suivantes:
 - code_station (car beaucoup de stations, mesures répétées, on ne veux pas un coeff par station)
 
 
-## Faire tourner le modele pour chaque indice et télécharger les résultats
+### Faire tourner le modele pour chaque indice et télécharger les résultats
 Le modèle appliqué ici est de la forme :
 mod_mixte <- clmm(libelle_classe ~ annee_c  + libelle_typologie + reseaux + (1|libelle_station), 
      data = data_classe)
@@ -133,16 +135,18 @@ mod_mixte <- clmm(libelle_classe ~ annee_c  + libelle_typologie + reseaux + (1|l
 
      
 ```{r}
-liste_indices <- c("IPR","IBD","IBMR","I2M2")
-resultats <- pblapply(
-  liste_indices, 
-  function(i) clmm_indices(data_reg,
-                           i,
-                           formule_modele = libelle_classe ~ annee_c + (1+ annee_c |code_station))) #pbapply permet d'afficher une barre de chargement
+liste_indices <- c("IPR", "IBD", "IBMR", "I2M2")
+resultats <- pblapply(liste_indices, function(i)
+  clmm_indices(
+    data_reg,
+    i,
+    formule_modele = libelle_classe ~ annee_c + (1 + annee_c |
+                                                   code_station)
+  )) #pbapply permet d'afficher une barre de chargement
 ```
 
 
-## Récupérer les résultats des effets fixes pour représenter les effets fixes de chaque indice sur une même figure.
+### Récupérer les résultats des effets fixes pour représenter les effets fixes de chaque indice sur une même figure.
 ```{r}
 effets_fixes_tous <- do.call(
   rbind,
@@ -162,16 +166,16 @@ effets_fixes_tous <- effets_fixes_tous %>%
 ```
 
 ```{r}
+#paramètres du graphique
 effets_fixes_tous$offset <- ifelse(effets_fixes_tous$reseaux == "RCS", -0.2, 0.2)
 effets_fixes_tous$term_num <- as.numeric(factor(effets_fixes_tous$term))
 effets_fixes_tous$term_num_offset <- effets_fixes_tous$term_num + effets_fixes_tous$offset
 
+#graphique
 effets_fixes_facet <- ggplot(effets_fixes_tous,
-                             aes(x = estimate,
-                                 y = term_num_offset,
-                                 color = reseaux)) +
-  geom_point(aes(color=reseaux),
-             alpha=0.8,
+                             aes(x = estimate, y = term_num_offset, color = reseaux)) +
+  geom_point(aes(color = reseaux),
+             alpha = 0.8,
              size = 3,
              shape = 16) +
   geom_point(
@@ -182,17 +186,16 @@ effets_fixes_facet <- ggplot(effets_fixes_tous,
     color = "black"
   ) +
   geom_errorbar(
-    aes(xmin = estimate - std.error,
-        xmax = estimate + std.error),
+    aes(xmin = estimate - std.error, xmax = estimate + std.error),
     height = 0.15,
     orientation = "y"
   ) +
-  scale_color_manual(values = palette_reseaux) +  
+  scale_color_manual(values = palette_reseaux) +
   scale_y_continuous(
     breaks = unique(effets_fixes_tous$term_num),
     labels = unique(effets_fixes_tous$term)
   ) +
-  facet_wrap(~ indice) +
+  facet_wrap( ~ indice) +
   theme_bw(base_size = 12) +
   labs(
     title = "Effets fixes des modèles CLMM par indice et par réseau",
@@ -204,34 +207,85 @@ effets_fixes_facet <- ggplot(effets_fixes_tous,
     **IPR** = Indice Poisson Rivière.<br>
 **<span style='color:#CD6839;'>RCS</span>**= Réseau de Contrôle de Surveillance.<br>
 **<span style='color:#2D0084;'>RRP</span>**= Réseau de Référence Perenne.<br>",
-    y = "Coefficient (log-odds)",
-    x = "",
-    color = "Réseau"
+y = "Coefficient (log-odds)",
+x = "",
+color = "Réseau"
   ) +
   theme(
     plot.title = ggtext::element_textbox_simple(
-      size = 14, face = "bold", margin = margin(b = 10)
+      size = 14,
+      face = "bold",
+      margin = margin(b = 10)
     ),
-    plot.subtitle = ggtext::element_textbox_simple(
-      size = 12, margin = margin(b = 10)
-    ),
+    plot.subtitle = ggtext::element_textbox_simple(size = 12, margin = margin(b = 10)),
     plot.caption = ggtext::element_textbox_simple(
-      halign = 0,        # ancre le bloc à droite
-      hjust = 0,         # aligne le texte à droite
-      lineheight = 1.3,  # interligne
+      halign = 0,
+      # ancre le bloc à droite
+      hjust = 0,
+      # aligne le texte à droite
+      lineheight = 1.3,
+      # interligne
       size = 9,
       margin = margin(t = 5)
     )
-
+    
   )
 
+#télécharger le graphique
 ggsave(
-    filename = file.path("../Output/4_Proportions_classes_eco/02_Resultats_CLMM/effets_fixes_facet.jpg"),
-    plot = effets_fixes_facet,
-    width = 14, 
-    height = 7, 
-    dpi = 300
-  )
+  filename = file.path(
+    "../Output/4_Proportions_classes_eco/02_Resultats_CLMM/effets_fixes_facet.jpg"
+  ),
+  plot = effets_fixes_facet,
+  width = 14,
+  height = 7,
+  dpi = 300
+)
+```
+
+
+
+# Etat biologique des stations par cycle DCE
+
+On calcule la moyenne des résultats pour chaque indice par station et par cycle DCE
+```{r}
+BDD_indices_mediane <- BDD_indices %>%
+  st_drop_geometry() %>% 
+  filter(code_station %in% mes_stations) %>% 
+  group_by(
+    code_indice,
+    libelle_indice,
+    code_station,
+    libelle_station,
+    reseaux,
+    Typologie,
+    cycle_DCE
+  ) %>%
+  mutate(cycle_DCE = as.factor(cycle_DCE)) %>% #nécessaire pour effectuer l'ANOVA
+  summarise(mediane_eqr = round(median(resultat_eqr),2), .groups = "drop") %>% 
+  attribuer_classe_eco(
+    table_seuils = valeurs_seuils,
+    var_eqr = "mediane_eqr",
+    var_temp = "cycle_DCE"
+    ) %>%  #attribuer la classe d'état écologique à la mediane
+  rename(libelle_classe=classe) %>% 
+  dplyr:: select(-seuil_bas, -seuil_haut, -couleur)
+```
+
+
+On va générer les diagramme pour différentes combinaisons de réseaux
+```{r}
+diag_alluvial_DCE(
+  data = BDD_indices_mediane,
+  liste_reseaux = c("RRP"),
+  output_dir = "../Output/4_Proportions_classes_eco/03_Sankey/Cycle_DCE"
+)
+
+diag_alluvial_DCE(
+  data = BDD_indices_mediane,
+  liste_reseaux = c("RCS"),
+  output_dir = "../Output/4_Proportions_classes_eco/03_Sankey/Cycle_DCE"
+)
 ```
 
 

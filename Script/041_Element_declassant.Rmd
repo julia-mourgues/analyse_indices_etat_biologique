@@ -24,12 +24,13 @@ library(ggtext)
 library(ggalluvial)
 library(shiny)
 library(gt)
+library(patchwork)
 ```
 
 ## Chargement des données
 
 ```{r}
-BDD_indices <- readRDS(here("Data/clean_data", "BDD_indices.rds"))
+load(here("Data/clean_data", "BDD_etude.rda"))
 mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
 ```
 
@@ -38,12 +39,12 @@ mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
 ## Préparation des données
 
 ```{r}
-classes <- c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
+classes <- c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")#objet ordonné qui va nous permettre d'identifier la moins bonne classe d'état
 
 table_element_declassant <- BDD_indices %>%
   st_drop_geometry() %>%
   filter(code_station %in% mes_stations) %>%
-  ungroup() %>% 
+  ungroup() %>%
   dplyr::select(
     code_station,
     libelle_station,
@@ -55,35 +56,42 @@ table_element_declassant <- BDD_indices %>%
     libelle_indice,
     libelle_classe
   ) %>%
-  pivot_wider(names_from = libelle_indice,
-              values_from=libelle_classe) %>%
-  mutate(across(c(IPR, I2M2, IBD, IBMR),
-                ~ factor(.x, levels = classes, ordered = TRUE)))%>%
+  pivot_wider(names_from = libelle_indice, values_from = libelle_classe) %>%
+  mutate(across(
+    c(IPR, I2M2, IBD, IBMR),
+    ~ factor(.x, levels = classes, ordered = TRUE)
+  )) %>% #appliquer les niveaux du facteur "classes"
   rowwise() %>%
   mutate(
-  etat_biologique = min(c(IPR, I2M2, IBD, IBMR), na.rm = TRUE),
-  element_declassant = list(
-    if (etat_biologique >= "Bon") {
+    #identifier la moins bonne classe d'état entre les 4 indices et
+    #s'en servir pour définir l'état biologique de la station
+    etat_biologique = min(c(IPR, I2M2, IBD, IBMR), na.rm = TRUE),
+    element_declassant = list(if (etat_biologique >= "Bon") {
       character(0)
     } else {
-      names(which(c(
-        IPR  = IPR  == etat_biologique,
-        I2M2 = I2M2 == etat_biologique,
-        IBD  = IBD  == etat_biologique,
-        IBMR = IBMR == etat_biologique
-      )))
-    }
-  )
-  )%>%
+      names(which(
+        c(
+          IPR  = IPR  == etat_biologique,
+          I2M2 = I2M2 == etat_biologique,
+          IBD  = IBD  == etat_biologique,
+          IBMR = IBMR == etat_biologique
+        )
+      ))
+    })
+  ) %>%
   ungroup()
 ```
 
 ```{r}
-saveRDS(table_element_declassant, here("Data/clean_data","table_element_declassant.rds"))
+#télécharger la table contenant les états biologiques et éléments déclassant
+saveRDS(
+  table_element_declassant,
+  here("Data/clean_data", "table_element_declassant.rds")
+)
 ```
 
 
-## Statistiques sur les proportions de chaque classe d'état
+## a. Statistiques sur les proportions de chaque classe d'état
 ```{r}
 sum_element_RRP <- table_element_declassant %>%  
   group_by(reseaux, annee) %>%
@@ -115,88 +123,89 @@ sum_element_RCS<- table_element_declassant %>%
             pct_mediocre= 100 * n_mediocre / n_total)
 ```
 
-## RRP
+## b. Diagrammes alluviaux effectuées sur les classes d'état biologiques retenues pour la DCE
+
+### Réseau RRP
 ```{r}
-table_element_declassant_RRP <- table_element_declassant %>% 
-  filter(reseaux=="RRP",
-         annee >=2013) %>% 
+#Sélection des données
+table_element_declassant_RRP <- table_element_declassant %>%
+  filter(reseaux == "RRP", annee >= 2013) %>%
   arrange(code_station, annee)
 
-data_RRP_large <- table_element_declassant_RRP %>% 
-  pivot_wider(
-    id_cols = code_station,
-    names_from = annee, 
-    values_from = etat_biologique)
+data_RRP_large <- table_element_declassant_RRP %>%
+  pivot_wider(id_cols = code_station,
+              names_from = annee,
+              values_from = etat_biologique)
 
 year_cols <- setdiff(names(data_RRP_large), c("code_station"))
-    
+
 years_num <- sort(suppressWarnings(as.numeric(year_cols)))
 years_kept <- as.character(years_num)
-    
-    
+
+
 #Passage au format lodes (ggalluvial)
-data_lodes_RRP <- ggalluvial::to_lodes_form(
-  data_RRP_large,
-  key = "annee",
-  axes = years_kept,
-  value = "etat"
-)
-    
-data_lodes_RRP$etat <- forcats::fct_explicit_na(
-  data_lodes_RRP$etat,
-  na_level = "Non évalué"
-)
-    
-data_lodes_RRP$annee <- base::factor(data_lodes_RRP$annee, 
-                                 levels = years_kept)
-data_lodes_RRP$reseaux<-"RRP"
+data_lodes_RRP <- ggalluvial::to_lodes_form(data_RRP_large,
+                                            key = "annee",
+                                            axes = years_kept,
+                                            value = "etat")
+
+data_lodes_RRP$etat <- forcats::fct_explicit_na(data_lodes_RRP$etat,
+                                                na_level = "Non évalué")
+
+data_lodes_RRP$annee <- base::factor(data_lodes_RRP$annee, levels = years_kept)
+data_lodes_RRP$reseaux <- "RRP"
 data_lodes_RRP$etat <- factor(
   data_lodes_RRP$etat,
-  levels = c("Très bon", "Bon", "Moyen", "Médiocre","Mauvais" , "Non évalué"),
+  levels = c("Très bon", "Bon", "Moyen", "Médiocre", "Mauvais" , "Non évalué"),
   ordered = TRUE
 )
-    
+
 #Définir les couleurs associées aux niveaux
-couleurs  = c("white" ,"red","orange","yellow","lightgreen","#2b83ba")
-classes   = c("Non évalué","Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
+couleurs  = c("white" , "red", "orange", "yellow", "lightgreen", "#2b83ba")
+classes   = c("Non évalué", "Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
 palette_etat <- stats::setNames(couleurs, classes)
-    
-    
+
+
 plot_declassant_RRP <- ggplot2::ggplot(
   data_lodes_RRP,
   ggplot2::aes(
     x        = annee,
     stratum  = etat,
     alluvium = code_station,
-    y        = 1,             # chaque station contribue de façon égale
+    y        = 1,
+    # chaque station contribue de façon égale
     fill     = etat
   )
 ) +
-  ggalluvial::geom_flow(ggplot2::aes(alpha = etat),color="darkgrey") +
+  ggalluvial::geom_flow(ggplot2::aes(alpha = etat), color = "darkgrey") +
   ggalluvial::geom_stratum() +
   ggplot2::scale_fill_manual(values = palette_etat, drop = TRUE) +
   ggplot2::scale_alpha_manual(
+    #ajuster la transparence
     values = c(
       "Très bon"    = 0.6,
       "Bon"         = 0.6,
       "Moyen"       = 0.6,
       "Médiocre"    = 0.6,
       "Mauvais"     = 0.6,
-      "Non évalué"  = 0.15   # très léger
+      "Non évalué"  = 0.15
     ),
     guide = "none"
   ) +
-  facet_wrap(~reseaux)+
+  facet_wrap( ~ reseaux) +
   ggplot2::theme_bw() +
-  ggplot2::labs(
-    title    = "Diagramme alluvial – évolution du nombre de stations par classe d’état biologique",
-    x        = "",
-    y        = "Nombre de stations",
-    fill     = "État biologique"
-  ) +
+  ggplot2::labs(title    = "Diagramme alluvial – évolution du nombre de stations par classe d’état biologique",
+                x        = "",
+                y        = "Nombre de stations",
+                fill     = "État biologique") +
   ggplot2::theme(
-    plot.title   = ggtext::element_textbox_simple(size = 14, face = "bold", margin = ggplot2::margin(b = 5)),
-    plot.subtitle= ggtext::element_textbox_simple(size = 15, margin = ggplot2::margin(b = 10)),
+    plot.title   = ggtext::element_textbox_simple(
+      size = 14,
+      face = "bold",
+      margin = ggplot2::margin(b = 5)
+    ),
+    plot.subtitle = ggtext::element_textbox_simple(size = 15, 
+                                                   margin = ggplot2::margin(b = 10)),
     axis.title   = ggplot2::element_text(size = 14),
     axis.text = ggplot2::element_text(size = 13),
     legend.title = ggplot2::element_text(size = 14, face = "bold"),
@@ -204,115 +213,117 @@ plot_declassant_RRP <- ggplot2::ggplot(
     legend.direction = "horizontal",
     legend.text = ggplot2::element_text(size = 13),
     strip.text = element_text(size = 14)
-  )+
-  ggplot2::guides(
-    fill  = guide_legend(order = 1, nrow = 1))
+  ) +
+  ggplot2::guides(fill  = guide_legend(order = 1, nrow = 1))
 
-
+#Télécharger la figure
 ggplot2::ggsave(
-  filename = file.path("../Output/4_Proportions_classes_eco/03_Sankey/Element_declassant/Element_declassant_RRP.jpg"),
+  filename = file.path(
+    "../Output/4_Proportions_classes_eco/03_Sankey/Element_declassant/Element_declassant_RRP.jpg"
+  ),
   plot     = plot_declassant_RRP,
   width    = 14,
   height   = 8
 )
 ```
 
-## RCS
+### Réseau RCS
 ```{r}
-table_element_declassant_RCS <- table_element_declassant %>% 
-  filter(reseaux=="RCS") %>% 
+#Sélection des données
+table_element_declassant_RCS <- table_element_declassant %>%
+  filter(reseaux == "RCS") %>%
   arrange(code_station, annee)
 
-data_RCS_large <- table_element_declassant_RCS %>% 
-  pivot_wider(
-    id_cols = code_station,
-    names_from = annee, 
-    values_from = etat_biologique)
+data_RCS_large <- table_element_declassant_RCS %>%
+  pivot_wider(id_cols = code_station,
+              names_from = annee,
+              values_from = etat_biologique)
 
 year_cols <- setdiff(names(data_RCS_large), c("code_station"))
-    
+
 years_num <- sort(suppressWarnings(as.numeric(year_cols)))
 years_kept <- as.character(years_num)
-    
-    
+
+
 #Passage au format lodes (ggalluvial)
-data_lodes_RCS <- ggalluvial::to_lodes_form(
-  data_RCS_large,
-  key = "annee",
-  axes = years_kept,
-  value = "etat"
-)
-    
-data_lodes_RCS$etat <- forcats::fct_explicit_na(
-  data_lodes_RCS$etat,
-  na_level = "Non évalué"
-)
-    
-data_lodes_RCS$annee <- base::factor(data_lodes_RCS$annee, 
-                                 levels = years_kept)
-data_lodes_RCS$reseaux<-"RCS"
+data_lodes_RCS <- ggalluvial::to_lodes_form(data_RCS_large,
+                                            key = "annee",
+                                            axes = years_kept,
+                                            value = "etat")
+
+data_lodes_RCS$etat <- forcats::fct_explicit_na(data_lodes_RCS$etat, 
+                                                na_level = "Non évalué")
+
+data_lodes_RCS$annee <- base::factor(data_lodes_RCS$annee, levels = years_kept)
+data_lodes_RCS$reseaux <- "RCS"
 
 data_lodes_RCS$etat <- factor(
   data_lodes_RCS$etat,
-  levels = c("Très bon", "Bon", "Moyen", "Médiocre","Mauvais" , "Non évalué"),
+  levels = c("Très bon", "Bon", "Moyen", "Médiocre", "Mauvais" , "Non évalué"),
   ordered = TRUE
 )
-    
+
 #Définir les couleurs associées aux niveaux
-couleurs  = c("white" ,"red","orange","yellow","lightgreen","#2b83ba")
-classes   = c("Non évalué","Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
+couleurs  = c("white" , "red", "orange", "yellow", "lightgreen", "#2b83ba")
+classes   = c("Non évalué", "Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
 palette_etat <- stats::setNames(couleurs, classes)
-    
+
 plot_declassant_RCS <- ggplot2::ggplot(
   data_lodes_RCS,
   ggplot2::aes(
     x        = annee,
     stratum  = etat,
     alluvium = code_station,
-    y        = 1,             # chaque station contribue de façon égale
+    y        = 1,
+    # chaque station contribue de façon égale
     fill     = etat
   )
 ) +
-  ggalluvial::geom_flow(ggplot2::aes(alpha = etat),color="darkgrey") +
+  ggalluvial::geom_flow(ggplot2::aes(alpha = etat), color = "darkgrey") +
   ggalluvial::geom_stratum() +
   ggplot2::scale_fill_manual(values = palette_etat, drop = TRUE) +
   ggplot2::scale_alpha_manual(
+    #ajuster la transparence
     values = c(
       "Très bon"    = 0.6,
       "Bon"         = 0.6,
       "Moyen"       = 0.6,
       "Médiocre"    = 0.6,
       "Mauvais"     = 0.6,
-      "Non évalué"  = 0.15   # très léger
+      "Non évalué"  = 0.15
     ),
     guide = "none"
   ) +
-  facet_wrap(~reseaux)+
+  facet_wrap( ~ reseaux) +
   ggplot2::theme_bw() +
-  ggplot2::labs(
-    title    = "Diagramme alluvial – évolution du nombre de stations par classe d’état biologique",
-    x        = "Années",
-    y        = "Nombre de stations",
-    fill     = "État biologique"
-  ) +
+  ggplot2::labs(title    = "Diagramme alluvial – évolution du nombre de stations par classe d’état biologique",
+                x        = "Années",
+                y        = "Nombre de stations",
+                fill     = "État biologique") +
   ggplot2::theme(
-    plot.title   = ggtext::element_textbox_simple(size = 14, face = "bold", margin = ggplot2::margin(b = 5)),
-    plot.subtitle= ggtext::element_textbox_simple(size = 15, margin = ggplot2::margin(b = 10)),
+    plot.title   = ggtext::element_textbox_simple(
+      size = 14,
+      face = "bold",
+      margin = ggplot2::margin(b = 5)
+    ),
+    plot.subtitle = ggtext::element_textbox_simple(size = 15,
+                                                   margin = ggplot2::margin(b = 10)),
     axis.title   = ggplot2::element_text(size = 14),
     axis.text = ggplot2::element_text(size = 13),
     legend.title = ggplot2::element_text(size = 14, face = "bold"),
     legend.position = "bottom",
     legend.direction = "horizontal",
     legend.text = ggplot2::element_text(size = 13),
-     strip.text = element_text(size = 14)
+    strip.text = element_text(size = 14)
+    
+  ) +
+  ggplot2::guides(fill  = guide_legend(order = 1, nrow = 1))
 
-  )+
-  ggplot2::guides(
-    fill  = guide_legend(order = 1, nrow = 1))
-
-
+#Télécharger la figure
 ggplot2::ggsave(
-  filename = file.path("../Output/4_Proportions_classes_eco/03_Sankey/Element_declassant/Element_declassant_RCS.jpg"),
+  filename = file.path(
+    "../Output/4_Proportions_classes_eco/03_Sankey/Element_declassant/Element_declassant_RCS.jpg"
+  ),
   plot     = plot_declassant_RCS,
   width    = 14,
   height   = 8
@@ -321,34 +332,37 @@ ggplot2::ggsave(
 
 
 ```{r}
-library(patchwork)
+#Assembler les deux figures générées ci-dessus
 plot_declassant_RRP_clean <- plot_declassant_RRP + labs(title = NULL)
 plot_declassant_RCS_clean <- plot_declassant_RCS + labs(title = NULL)
 
 plot_combine <- (plot_declassant_RRP_clean / plot_declassant_RCS_clean) +
-  plot_annotation(title = " ",
-                  caption="Les classes d'état biologique sont celles retenues pour la DCE.<br> Le réseau RCS est étudié sur la période 2007-2024 et compte 51 stations.<br> Le réseau RRP est étudié sur la période 2013-2024 et compte 18 stations.",
+  plot_annotation(
+    title = " ",
+    caption = "Les classes d'état biologique sont celles retenues pour la DCE.<br> Le réseau RCS est étudié sur la période 2007-2024 et compte 51 stations.<br> Le réseau RRP est étudié sur la période 2013-2024 et compte 18 stations.",
     theme = theme(
       plot.title = element_text(size = 14, face = "bold"),
       plot.subtitle = element_text(size = 15),
-        plot.caption = element_textbox_simple(
-          size = 13,
-          hjust = 0,      # 0 = aligné à gauche, 1 = à droite
-          lineheight = 1.2,
-          margin=margin(t=10),
-          fill = "white", 
-          box.color = "black",
-          width = unit(0.80, "npc")
+      plot.caption = element_textbox_simple(
+        size = 13,
+        hjust = 0,
+        lineheight = 1.2,
+        margin = margin(t = 10),
+        fill = "white",
+        box.color = "black",
+        width = unit(0.80, "npc")
       ),
-      strip.text=element_text(size=14)
-
-    ))+
+      strip.text = element_text(size = 14)
+      
+    )
+  ) +
   plot_layout(guides = "collect") &
-  theme(legend.position = "bottom",
-        legend.direction="horizontal")
+  theme(legend.position = "bottom", legend.direction = "horizontal")
 
 ggplot2::ggsave(
-  filename = file.path("../Output/4_Proportions_classes_eco/03_Sankey/Element_declassant/Element_declassant_combine.jpg"),
+  filename = file.path(
+    "../Output/4_Proportions_classes_eco/03_Sankey/Element_declassant/Element_declassant_combine.jpg"
+  ),
   plot     = plot_combine,
   width    = 13,
   height   = 12
@@ -366,7 +380,7 @@ couleurs <- c("red", "orange", "yellow", "lightgreen", "#2b83ba")
 names(couleurs) <- classe_libelle
 ```
 
-##Version html sans filtre
+## a. Version html sans filtre
 ```{r}
 tab2 <- table_element_declassant %>%
    mutate(
@@ -388,50 +402,52 @@ color_cell <- function(x){
 
 ```{r}
 element_declassant_tab2 <- tab2 %>%
-  mutate(code_departement=paste("Département ", code_departement),
-         reseaux=paste("Réseau ", reseaux)) %>% 
-  group_by(code_departement, reseaux) %>% 
-  gt() %>% 
-  cols_hide(columns = c(code_departement, reseaux)) %>% 
-  tab_options(
-    table.width = pct(70),
-    table.font.size = px(13)
-  ) %>% 
-  tab_style(
-    style = list(cell_text(indent = px(20)), 
-                             cell_borders(
-                               sides = "all",
-                               color = "#f7f7f7",
-                               weight = px(2))),
-    locations = cells_body()) %>% 
-  tab_style(
-    style = list(
-      cell_text(weight = "bold", size = px(14)),
-      cell_fill(color = "#f7f7f7")
-    ),
-    locations = cells_row_groups()
-  ) %>% 
-  tab_style(
-        style = cell_text(size = px(14), weight = "bold"),
-        locations = cells_column_labels()) %>% 
-  opt_row_striping() %>% 
+  mutate(
+    code_departement = paste("Département ", code_departement),
+    reseaux = paste("Réseau ", reseaux)
+  ) %>%
+  group_by(code_departement, reseaux) %>%
+  gt() %>%
+  cols_hide(columns = c(code_departement, reseaux)) %>%
+  tab_options(table.width = pct(70), table.font.size = px(13)) %>%
+  tab_style(style = list(
+    cell_text(indent = px(20)),
+    cell_borders(
+      sides = "all",
+      color = "#f7f7f7",
+      weight = px(2)
+    )
+  ),
+  locations = cells_body()) %>%
+  tab_style(style = list(
+    cell_text(weight = "bold", size = px(14)),
+    cell_fill(color = "#f7f7f7")
+  ),
+  locations = cells_row_groups()) %>%
+  tab_style(style = cell_text(size = px(14), weight = "bold"),
+            locations = cells_column_labels()) %>%
+  opt_row_striping() %>%
   cols_label(
     libelle_station  = "Station",
     etat_biologique  = "Etat biologique",
-    reseaux="Réseau",
-    annee="Année",
-    element_declassant= "Elément déclassant"
+    reseaux = "Réseau",
+    annee = "Année",
+    element_declassant = "Elément déclassant"
   ) %>%
   tab_header(
-    title = md("**Classe d'état biologique des 4 indices, par station et par année, et classe d'état biologique retenue pour la DCE.**"),
-    subtitle = md("La variable **Etat biologique** contient le nom de l'élément déclassant.")
-  ) %>% 
+    title = md(
+      "**Classe d'état biologique des 4 indices, par station et par année, et classe d'état biologique retenue pour la DCE.**"
+    ),
+    subtitle = md(
+      "La variable **Etat biologique** contient le nom de l'élément déclassant."
+    )
+  ) %>%
   sub_missing(columns = c("IBD", "IBMR", "IPR", "I2M2")) %>%
   
   # Coloration des indices
   data_color(
     columns = c("IBD", "IBMR", "I2M2", "IPR"),
-    fn = function(x){
+    fn = function(x) {
       ifelse(x %in% classe_libelle, couleurs[x], "transparent")
     }
   ) %>%
@@ -439,7 +455,7 @@ element_declassant_tab2 <- tab2 %>%
   # Coloration de l'état écologique
   data_color(
     columns = "etat_biologique",
-    fn = function(x){
+    fn = function(x) {
       ifelse(x %in% classe_libelle, couleurs[x], "transparent")
     }
   ) %>%
@@ -447,20 +463,24 @@ element_declassant_tab2 <- tab2 %>%
   # Remplacer le texte de la colonne etat_biologique
   text_transform(
     locations = cells_body(columns = "etat_biologique"),
-    fn = function(x) { "" }
+    fn = function(x) {
+      ""
+    }
   ) %>%
   
   # Supprimer le texte dans les indices
   text_transform(
-    locations = cells_body(columns = c("IBD","IBMR","IPR","I2M2")),
-    fn = function(x){ "" }
+    locations = cells_body(columns = c("IBD", "IBMR", "IPR", "I2M2")),
+    fn = function(x) {
+      ""
+    }
   ) %>%
   cols_width(
-        c(IBD, IBMR, I2M2, IPR) ~ px(60),
-        etat_biologique ~ px(80),
-        annee ~px(60),
-        libelle_station ~px(280)
-      ) %>%
+    c(IBD, IBMR, I2M2, IPR) ~ px(60),
+    etat_biologique ~ px(80),
+    annee ~ px(60),
+    libelle_station ~ px(280)
+  ) %>%
   
   # Centrer le texte de etat_biologique
   cols_align(
@@ -471,10 +491,9 @@ gt::gtsave(element_declassant_tab2, filename = "../Output/4_Proportions_classes_
 ```
 
 
-## Version shiny app avec filtres
+## b. Version shiny app avec filtres
 ```{r message=TRUE, warning=FALSE}
 ui <- fluidPage(
-  
   titlePanel("État biologique des stations"),
   
   sidebarLayout(
@@ -482,8 +501,9 @@ ui <- fluidPage(
       width = 3,
       
       # --- Filtres ---
-      selectInput("dep", "Département :", 
-                  choices = c("Tous", sort(unique(table_element_declassant$code_departement)))),
+      selectInput("dep", "Département :", choices = c("Tous", sort(
+        unique(table_element_declassant$code_departement)
+      ))),
       selectInput("reseau", "Réseau :", choices = "Tous"),
       selectInput("station", "Station :", choices = "Tous"),
       selectInput("annee", "Année :", choices = "Tous"),
@@ -492,55 +512,65 @@ ui <- fluidPage(
       
       # --- Légende des couleurs ---
       tags$h4("Légende des classes"),
-      div(style="display:flex; flex-direction:column; gap:6px;",
-          
+      div(style = "display:flex; flex-direction:column; gap:6px;", 
           lapply(names(couleurs), function(nom) {
+        div(style = "display:flex; align-items:center; gap:8px;", 
             div(
-              style="display:flex; align-items:center; gap:8px;",
-              div(style=sprintf(
-                "width:20px; height:20px; background:%s; border-radius:3px;",
-                couleurs[nom]
-              )),
-              nom
-            )
-          })
-      )
+          style = sprintf(
+            "width:20px; height:20px; background:%s; border-radius:3px;",
+            couleurs[nom]
+          )
+        ), nom)
+      }))
     ),
     
-    mainPanel(
-      width = 9,
-      gt_output("table_gt")
-    )
+    mainPanel(width = 9, gt_output("table_gt"))
   )
 )
 
 server <- function(input, output, session) {
-  
   # --- Données préparées ---
   tab2 <- table_element_declassant %>%
     mutate(
       etat_biologique = as.character(etat_biologique),
-      element_declassant = sapply(element_declassant, function(x) paste(x, collapse = ", "))
+      element_declassant = sapply(element_declassant, function(x)
+        paste(x, collapse = ", "))
     ) %>%
-    select(code_departement, reseaux, libelle_station, annee,
-           IBD, IBMR, I2M2, IPR, etat_biologique, element_declassant) %>%
+    select(
+      code_departement,
+      reseaux,
+      libelle_station,
+      annee,
+      IBD,
+      IBMR,
+      I2M2,
+      IPR,
+      etat_biologique,
+      element_declassant
+    ) %>%
     arrange(code_departement, libelle_station, annee)
   
   # --- Mise à jour dynamique des filtres ---
   
   # 1) Quand le département change → mettre à jour réseau, station, année
   observeEvent(input$dep, {
-    df <- tab2 %>% filter(code_departement == input$dep | input$dep == "Tous")
+    df <- tab2 %>% filter(code_departement == input$dep |
+                            input$dep == "Tous")
     
-    updateSelectInput(session, "reseau",
+    updateSelectInput(session,
+                      "reseau",
                       choices = c("Tous", sort(unique(df$reseaux))),
                       selected = "Tous")
     
-    updateSelectInput(session, "station",
-                      choices = c("Tous", sort(unique(df$libelle_station))),
+    updateSelectInput(session,
+                      "station",
+                      choices = c("Tous", sort(unique(
+                        df$libelle_station
+                      ))),
                       selected = "Tous")
     
-    updateSelectInput(session, "annee",
+    updateSelectInput(session,
+                      "annee",
                       choices = c("Tous", sort(unique(df$annee))),
                       selected = "Tous")
   })
@@ -549,13 +579,18 @@ server <- function(input, output, session) {
   observeEvent(input$reseau, {
     df <- tab2 %>%
       filter((code_departement == input$dep | input$dep == "Tous") &
-             (reseaux == input$reseau | input$reseau == "Tous"))
+               (reseaux == input$reseau | input$reseau == "Tous")
+      )
     
-    updateSelectInput(session, "station",
-                      choices = c("Tous", sort(unique(df$libelle_station))),
+    updateSelectInput(session,
+                      "station",
+                      choices = c("Tous", sort(unique(
+                        df$libelle_station
+                      ))),
                       selected = "Tous")
     
-    updateSelectInput(session, "annee",
+    updateSelectInput(session,
+                      "annee",
                       choices = c("Tous", sort(unique(df$annee))),
                       selected = "Tous")
   })
@@ -564,10 +599,13 @@ server <- function(input, output, session) {
   observeEvent(input$station, {
     df <- tab2 %>%
       filter((code_departement == input$dep | input$dep == "Tous") &
-             (reseaux == input$reseau | input$reseau == "Tous") &
-             (libelle_station == input$station | input$station == "Tous"))
+               (reseaux == input$reseau | input$reseau == "Tous") &
+               (libelle_station == input$station |
+                  input$station == "Tous")
+      )
     
-    updateSelectInput(session, "annee",
+    updateSelectInput(session,
+                      "annee",
                       choices = c("Tous", sort(unique(df$annee))),
                       selected = "Tous")
   })
@@ -576,73 +614,96 @@ server <- function(input, output, session) {
   data_filtered <- reactive({
     df <- tab2
     
-    if (input$dep != "Tous") df <- df %>% filter(code_departement == input$dep)
-    if (input$reseau != "Tous") df <- df %>% filter(reseaux == input$reseau)
-    if (input$station != "Tous") df <- df %>% filter(libelle_station == input$station)
-    if (input$annee != "Tous") df <- df %>% filter(annee == input$annee)
+    if (input$dep != "Tous")
+      df <- df %>% filter(code_departement == input$dep)
+    if (input$reseau != "Tous")
+      df <- df %>% filter(reseaux == input$reseau)
+    if (input$station != "Tous")
+      df <- df %>% filter(libelle_station == input$station)
+    if (input$annee != "Tous")
+      df <- df %>% filter(annee == input$annee)
     
     df
   })
   
-  # --- Tableau GT identique ---
+  # --- Tableau gt()---
   output$table_gt <- render_gt({
-    
     df <- data_filtered()
     
     df %>%
-      mutate(code_departement=paste("Département ", code_departement),
-         reseaux=paste("Réseau ", reseaux)) %>% 
-      group_by(code_departement, reseaux) %>% 
-      gt() %>% 
-      cols_hide(columns = c(code_departement, reseaux)) %>% 
+      mutate(
+        code_departement = paste("Département ", code_departement),
+        reseaux = paste("Réseau ", reseaux)
+      ) %>%
+      group_by(code_departement, reseaux) %>%
+      gt() %>%
+      cols_hide(columns = c(code_departement, reseaux)) %>%
       tab_options(table.width = pct(70),
-                  table.font.size = px(13)) %>% 
-      tab_style(style = list(cell_text(indent = px(20)), 
-                             cell_borders(
-                               sides = "all",
-                               color = "#f7f7f7",
-                               weight = px(2))), 
-                locations = cells_body()) %>% 
-      tab_style(
-        style = list(cell_text(weight = "bold", size = px(14)), cell_fill(color = "#f7f7f7")),
-        locations = cells_row_groups()
-      ) %>% 
-      tab_style(
-        style = cell_text(size = px(14), weight = "bold"),
-        locations = cells_column_labels()) %>% 
-      opt_row_striping() %>% 
+                  table.font.size = px(13)) %>%
+      tab_style(style = list(
+        cell_text(indent = px(20)),
+        cell_borders(
+          sides = "all",
+          color = "#f7f7f7",
+          weight = px(2)
+        )
+      ),
+      locations = cells_body()) %>%
+      tab_style(style = list(
+        cell_text(weight = "bold", size = px(14)),
+        cell_fill(color = "#f7f7f7")
+      ),
+      locations = cells_row_groups()) %>%
+      tab_style(style = cell_text(size = px(14), weight = "bold"),
+                locations = cells_column_labels()) %>%
+      opt_row_striping() %>%
       cols_label(
         libelle_station = "Station",
         etat_biologique = "Etat biologique",
         reseaux = "Réseau",
         annee = "Année",
-        element_declassant="Elément déclassant"
+        element_declassant = "Elément déclassant"
       ) %>%
       tab_header(
-        title = md("**Classe d'état biologique des 4 indices, par station et par année, et classe d'état biologique retenue pour la DCE.**"),
-        subtitle = md("La variable **Etat biologique** contient le nom de l'élément déclassant.")
-      ) %>% 
+        title = md(
+          "**Classe d'état biologique des 4 indices, par station et par année, et classe d'état biologique retenue pour la DCE.**"
+        ),
+        subtitle = md(
+          "La variable **Etat biologique** contient le nom de l'élément déclassant."
+        )
+      ) %>%
       sub_missing(columns = c("IBD", "IBMR", "IPR", "I2M2")) %>%
-      data_color(columns = c("IBD", "IBMR", "I2M2", "IPR"),
-                 fn = function(x) ifelse(x %in% classe_libelle, couleurs[x], "transparent")) %>%
-      data_color(columns = "etat_biologique",
-                 fn = function(x) ifelse(x %in% classe_libelle, couleurs[x], "transparent")) %>%
-      text_transform(
-        locations = cells_body(columns = "etat_biologique"),
-        fn = function(x) ""
+      data_color(
+        columns = c("IBD", "IBMR", "I2M2", "IPR"),
+        fn = function(x)
+          ifelse(x %in% classe_libelle, couleurs[x], "transparent")
+      ) %>%
+      data_color(
+        columns = "etat_biologique",
+        fn = function(x)
+          ifelse(x %in% classe_libelle, couleurs[x], "transparent")
       ) %>%
       text_transform(
-        locations = cells_body(columns = c("IBD","IBMR","IPR","I2M2")),
-        fn = function(x) ""
+        locations = cells_body(columns = "etat_biologique"),
+        fn = function(x)
+          ""
+      ) %>%
+      text_transform(
+        locations = cells_body(columns = c("IBD", "IBMR", "IPR", "I2M2")),
+        fn = function(x)
+          ""
       ) %>%
       cols_width(
         c(IBD, IBMR, I2M2, IPR) ~ px(60),
         etat_biologique ~ px(80),
         element_declassant ~ px(140),
-        annee ~px(60),
-        libelle_station ~px(280)
+        annee ~ px(60),
+        libelle_station ~ px(280)
       ) %>%
-      cols_align(align = "center", columns = c("etat_biologique","element_declassant", "annee"))
+      cols_align(
+        align = "center",
+        columns = c("etat_biologique", "element_declassant", "annee")
+      )
   })
 }
 
@@ -650,8 +711,9 @@ server <- function(input, output, session) {
 shinyApp(ui, server)
 ```
 
-## Table avec nombre de station par classe d'état biologique et par année
+## c. Table avec nombre de station par classe d'état biologique et par année
 ```{r}
+#arrangement des données
 stat_etat_annee <- table_element_declassant %>%
   filter(reseaux != "RRP" | annee >= 2013) %>% 
   group_by(reseaux, annee) %>% 
@@ -665,6 +727,7 @@ stat_etat_annee <- table_element_declassant %>%
 ```
 
 ```{r}
+#créer la table
 table_etat_annee <- stat_etat_annee %>% 
   mutate(reseaux=paste("Réseau ", reseaux)) %>% 
   group_by(reseaux) %>% 
@@ -698,13 +761,13 @@ table_etat_annee <- stat_etat_annee %>%
     style = cell_text( size=px(12)),  
     locations = cells_body()) 
 
-table_etat_annee
+#télécharger la table au format .pdf
 gtsave(table_etat_annee, filename = "../Output/4_Proportions_classes_eco/nombre_stations_etat_annee.pdf")
 ```
 
 # 3. Statistiques éléments déclassants
 
-## Graph présentant le nombre de station par année qui ont plus d'un élément déclassant.
+## Graphique présentant le nombre de station par année qui ont plus d'un élément déclassant.
 ```{r}
 nb_stations_plusieurs <- table_element_declassant %>%
   filter(reseaux != "RRP" | annee >= 2013) %>% # si le réseau est RRP on ne prend pas en compte les valeurs avant 2013
@@ -715,24 +778,20 @@ nb_stations_plusieurs <- table_element_declassant %>%
 ```
 
 ```{r}
-ggplot(data=nb_stations_plusieurs, aes(x=annee, y=nb_stations, fill=reseaux))+
-  geom_col(position = position_dodge(), color="black")+
-  scale_x_continuous(breaks = seq(min(nb_stations_plusieurs$annee),
-                                  max(nb_stations_plusieurs$annee),
-                                  by = 2)) +
-  scale_fill_manual(
-   name = "Reseaux",
-   values = c(
-    "RCS" = "#CD6839",
-    "RRP" = "#2D0084"
-  ))+
-  labs(
-    title="Nombre de stations ayant plus d'un élément déclassant par année et par réseaux",
-    x="Année",
-    y="Nombre de stations"
-  )+
-  theme_bw()+
-  theme(legend.position="bottom")
+ggplot(data = nb_stations_plusieurs, aes(x = annee, y = nb_stations, fill =
+                                           reseaux)) +
+  geom_col(position = position_dodge(), color = "black") +
+  scale_x_continuous(breaks = seq(
+    min(nb_stations_plusieurs$annee),
+    max(nb_stations_plusieurs$annee),
+    by = 2
+  )) +
+  scale_fill_manual(name = "Reseaux",
+                    values = c("RCS" = "#CD6839", "RRP" = "#2D0084")) +
+  labs(title = "Nombre de stations ayant plus d'un élément déclassant par année et par réseaux", x =
+         "Année", y = "Nombre de stations") +
+  theme_bw() +
+  theme(legend.position = "bottom")
 ```
 
 ## Calculer le nombre de fois où un élément est déclassant, et le pourcentage associé
@@ -748,39 +807,10 @@ stats_declassants <- table_element_declassant %>%
     pourcentage = round((100 * nb_cas / sum(nb_cas)), 2),
   ) %>%
   ungroup()
-
-moy_stats_declassants <- table_element_declassant %>%
-  select(annee, reseaux, element_declassant) %>%
-  filter(reseaux != "RRP" | annee >= 2013) %>% # si le réseau est RRP on ne prend pas en compte les valeurs avant 2013
-  unnest(element_declassant) %>%   # transforme la liste en lignes
-  group_by(reseaux) %>%
-  summarise(n_total = n(),
-            n_ipr= sum(element_declassant=="IPR"),
-            n_ibd= sum(element_declassant=="IBD"),
-             n_ibmr= sum(element_declassant=="IBMR"),
-             n_i2m2= sum(element_declassant=="I2M2"),
-            pct_ipr= 100 * n_ipr / n_total,
-            pct_ibmr= 100 * n_ibmr / n_total,
-            pct_ibd= 100 * n_ibd / n_total,
-            pct_i2m2= 100 * n_i2m2 / n_total)
-
-moy_stats_declassants_annee <- table_element_declassant %>%
-  select(annee, reseaux, element_declassant) %>%
-  filter(reseaux != "RRP" | annee >= 2013) %>% # si le réseau est RRP on ne prend pas en compte les valeurs avant 2013
-  unnest(element_declassant) %>%   # transforme la liste en lignes
-  group_by(annee,reseaux) %>%
-  summarise(n_total = n(),
-            n_ipr= sum(element_declassant=="IPR"),
-            n_ibd= sum(element_declassant=="IBD"),
-             n_ibmr= sum(element_declassant=="IBMR"),
-             n_i2m2= sum(element_declassant=="I2M2"),
-            pct_ipr= 100 * n_ipr / n_total,
-            pct_ibmr= 100 * n_ibmr / n_total,
-            pct_ibd= 100 * n_ibd / n_total,
-            pct_i2m2= 100 * n_i2m2 / n_total)
 ```
 
 ```{r}
+#créer une palette de couleur pour les indices
 palette <- c(
   "IBMR" = "#00B2A9FF",  
   "IBD"  = "#E43C40FF",  
@@ -788,6 +818,7 @@ palette <- c(
   "IPR" = "#8942BDFF"  
 )
 
+#ordonner le facteur réseau
 stats_declassants <- stats_declassants %>%
   mutate(
     reseaux = factor(
@@ -798,7 +829,7 @@ stats_declassants <- stats_declassants %>%
   )
 ```
 
-## Graphique
+## Graphique présentant le nombre de fois où un idice a été déclassant par années, et par réseau
 
 ```{r}
 freq_declassant_point <- ggplot(stats_declassants,
@@ -836,6 +867,7 @@ freq_declassant_point <- ggplot(stats_declassants,
       )
   )
 
+#Télécharger la figure
 ggplot2::ggsave(
   filename = file.path("../Output/4_Proportions_classes_eco/freq_declassant_point.jpg"),
   plot     = freq_declassant_point,

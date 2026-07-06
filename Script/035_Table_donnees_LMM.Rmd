@@ -21,7 +21,7 @@ library(gt)
 ```
 
 ## Chargement des données
-On va rassembler les données issues des lmm des différents indicesvet qui seront utilisées pour la création des fiches stations
+On va rassembler les données issues des lmm des différents indices pour créer des tables communes et ainsi les utiliser pour la création des fiches stations
 ```{r}
 #table contenant les tendances régionales + données associées (p_value, R2...)
 fichiers_donnees <- list.files(
@@ -107,7 +107,7 @@ donnees_LMM2 <- donnees_LMM %>%
 ```
 
 
-# Tableau contenant les résultats globaux des LMM par indices et réseaux
+# Tableau au format gt() contenant les résultats globaux des LMM par indices et réseaux
 ```{r}
 table_recap <- donnees_LMM2 %>%
   mutate(reseaux = paste("Réseau ", reseaux)) %>%
@@ -119,7 +119,11 @@ table_recap <- donnees_LMM2 %>%
       "**Résultats des modèles linéaires mixtes modélisant les tendances des indices par réseaux.**"
     ),
     subtitle = md(
-      "**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05)."
+      "**I2M2**= Indice Invertébrés Multimétrique; 
+      **IBD**= Indice Biologique Diatomées; 
+      **IBMR**= Indice Biologique Macrophytes en Rivière; 
+      **IPR**= Indice Poisson Rivière. 
+      Les pentes en gras sont significatives (p_value < 0.05)."
     )
   ) %>%
   gt::cols_label(
@@ -158,6 +162,7 @@ gtsave(table_recap, filename = "../Output/1_Tendance_indice/03_LMM/resultats_glo
 
 # Tableau contenant le nombre de stations qui s'améliorent ou se déteriorent
 ```{r}
+#calcul des statistiques
 stat_pentes_global <- pentes_LMM %>% 
   group_by(libelle_indice, reseaux) %>% 
   summarise(n_amelioration = sum(pente > 0, na.rm = TRUE),
@@ -176,6 +181,7 @@ stat_pentes_dept <- pentes_LMM %>%
 
 
 ```{r}
+#création du tableau
 table_stat_global <- stat_pentes_global %>%
   mutate(reseaux = paste("Réseau ", reseaux)) %>%
   group_by(reseaux) %>%
@@ -186,7 +192,9 @@ table_stat_global <- stat_pentes_global %>%
       "**Nombre de stations dont l'état biologique s'améliore et se déteriore, par indice et par réseaux.**"
     ),
     subtitle = md(
-      "**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05)."
+      "**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; 
+      **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. 
+      Les pentes en gras sont significatives (p_value < 0.05)."
     )
   ) %>%
   gt::cols_label(
@@ -225,7 +233,10 @@ table_stat_dept <- stat_pentes_dept %>%
       "**Nombre de stations dont l'état biologique s'améliore et se déteriore, par département, réseaux et indice.**"
     ),
     subtitle = md(
-      "**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05)."
+      "**I2M2**= Indice Invertébrés Multimétrique; 
+      **IBD**= Indice Biologique Diatomées; 
+      **IBMR**= Indice Biologique Macrophytes en Rivière; 
+      **IPR**= Indice Poisson Rivière. Les pentes en gras sont significatives (p_value < 0.05)."
     )
   ) %>%
   gt::cols_label(
@@ -256,10 +267,10 @@ gtsave(table_stat_dept, filename = "../Output/1_Tendance_indice/03_LMM/nombre_st
 # Répartition spatiale des tendances stationnelles
 
 ```{r}
-## Projection Lambert 93
+# Projection Lambert 93
 crs_lambert93 <- sf::st_crs(2154)
 
-## pour fond de carte
+# pour fond de carte
 background <-
   rnaturalearth::ne_countries(continent = 'europe', scale = 50) %>%
   sf::st_as_sf() %>%
@@ -272,25 +283,25 @@ background <-
   ) %>%
       sf::st_transform(crs = crs_lambert93)
 
-## pour les limites des régions/départements
+# pour les limites des régions/départements
 regions_FR <-
     rnaturalearth::ne_states(country = "France", returnclass = "sf") %>%
     sf::st_transform(crs = crs_lambert93) %>%
     sf::st_make_valid() %>%
     dplyr::filter(type != "Overseas département")
 
-## la normandie
+# la normandie
 region_normandie <-
   regions_FR %>%
   dplyr::filter(region == 'Normandie')
 
-## bbox de la normandie pour zoomer
+# bbox de la normandie pour zoomer
 bbox_normandie <-
   region_normandie %>%
   sf::st_buffer(dist = 20000) %>%
   sf::st_bbox()
 
-## données hydro bassins
+# données hydro bassins
 district_limits <-
   tod::wfs_sandre(
     url_wfs = "https://services.sandre.eaufrance.fr/geo/topage?",
@@ -300,7 +311,7 @@ district_limits <-
 
 
 ```{r}
-## couche SIG des station sur le réseau
+# couche SIG des station sur le réseau
 stations <-
   sf::read_sf(
     "\\\\ad.intra\\dfs\\COMMUNS\\REGIONS\\nor\\DR\\OFB\\SIG\\DR\\IG_METIER\\EAU\\PECHE\\Stations_reseaux.gpkg"
@@ -319,6 +330,7 @@ pentes_LMM_large<- pentes_LMM %>%
 ```
 
 ```{r}
+#création d'une nouvelle variable contenant la tendance de la station
 stations <- stations %>%
   left_join(pentes_LMM,
             by=c("station"="code_station")) %>%
@@ -336,17 +348,19 @@ stations <- stations %>%
     )
   )
 
-## palettes de couleurs et symboles pour les tendances
+# création d'une palettes de couleurs pour les tendances
 palette_col <- setNames(
   c("#f94144", "#6F6F6F", "#32CD32"),
   c("Dégradation", "Absence de tendance", "Amélioration")
 )
 
+#création d'une palette de symboles pour les tendances
 symbol <-
   setNames(
     c(21, 23),
     c("RCS", "RRP"))
 ```
+
 ```{r}
 ## fond de carte
 base_map <-
@@ -391,7 +405,7 @@ map_stations <-
     inherit.aes = F,
     alpha = 0.9
   ) +
-  ggplot2::facet_wrap( ~ libelle_indice) +
+  ggplot2::facet_wrap(~ libelle_indice) +
   ggplot2::scale_size_continuous("Valeur tendance", range = c(1.5, 5)) +
   ggplot2::scale_shape_manual("Réseau", values = symbol) +
   ggplot2::scale_fill_manual("Tendance", values = palette_col) +
@@ -421,8 +435,8 @@ map_stations <-
       margin = margin(t = 5, b = 5),
       face = "bold"
     ),
-    plot.subtitle = ggtext::element_textbox_simple(size = 13, 
-                                                   margin = margin(t =5, b = 5)),
+    plot.subtitle = ggtext::element_textbox_simple(size = 13, margin = margin(t =
+                                                                                5, b = 5)),
     strip.text = ggtext::element_textbox_simple(
       size = 11,
       margin = margin(t = 4, b = 4),
@@ -440,11 +454,10 @@ map_stations <-
       width = unit(0.80, "npc")
     )
   )
-
-map_stations
 ```
 
 ```{r}
+#télécharger la figure
 ggplot2::ggsave(
   filename = "../Output/1_Tendance_indice/03_LMM/carte_tendance_stations.jpg",
   plot = map_stations,
@@ -488,7 +501,7 @@ pentes_LMM2 <- pentes_LMM %>%
     )
   )
 
-med_pentes <- pentes_LMM2 %>%
+moy_pentes <- pentes_LMM2 %>%
   group_by(libelle_indice, reseaux) %>%
   summarise(moyenne = mean(pente, na.rm = TRUE), .groups = "drop")
 style <- c(1, 2)
@@ -499,8 +512,9 @@ distrib_pente <- ggplot(pentes_LMM2, aes(x = pente, fill = reseaux)) +
                  alpha = 0.6) +
   scale_fill_manual(name = "Réseaux",
                     values = c("RCS" = "#CD6839", "RRP" = "#2D0084")) +
+  #ligne verticale correspondant à la moyenne régionale
   geom_vline(
-    data = med_pentes,
+    data = moy_pentes,
     aes(
       xintercept = moyenne,
       color = "Moyenne",
@@ -508,6 +522,7 @@ distrib_pente <- ggplot(pentes_LMM2, aes(x = pente, fill = reseaux)) +
     ),
     linewidth = 1
   ) +
+  #ligne verticale correspondant au 0
   geom_vline(aes(
     xintercept = 0,
     color = "Zéro",
@@ -527,12 +542,13 @@ distrib_pente <- ggplot(pentes_LMM2, aes(x = pente, fill = reseaux)) +
       order = 2,
       override.aes = list(fill = "transparent")
     )
-    
   ) +
-  
   facet_grid(reseaux ~ libelle_indice, scales = "free_y") +
   theme_bw() +
-  labs(title = "Distribution des pentes des tendances temporelles des indices issues des LMM.", x = "Valeur de pente", y = "Nombre") +
+  labs(
+    title = "Distribution des pentes des tendances temporelles des indices issues des LMM.", 
+    x = "Valeur de pente", 
+    y = "Nombre") +
   theme(
     plot.title = element_textbox_simple(
       size = 13,
