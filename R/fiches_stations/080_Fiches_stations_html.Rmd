@@ -42,6 +42,7 @@ if (knitr::is_html_output()) {
 Sur chaque station suivie en Normandie dans le cadre de la pêche scientifique à l'électricité, trois autres communautés biologiques sont également échantillonnées : macrophytes, macroinvertébrés aquatiques et diatomées.<br>  
 Les prélèvements effectués permettent ensuite de calculer les indices d'état biologique suivants : Indice Poisson Rivière (IPR), Indice Biologique Macrophyte en Rivière (IBMR), Indice Macro-invertébrés Multimétrique (I2M2) et Indice Biologique Diatomées (IBD).<br>  
 Ces indices sont normalisés, c'est à dire que leur calcul prend en compte des valeurs de référence attendues en situation non impactée. Ils donnent ensuite des résultats sous forme de classes d'état biologique, allant de « Très bon » à « Mauvais ».
+Les valeurs d'IPR analysées ici sont celles calculées à l'aide du script SEEE (Systeme d'Evaluation de l'Etat des Eaux, https://seee.eaufrance.fr/) v1.0.3 dans laquelle certains taxons ne sont pas pris en compte.
 
 ```{r chargement_packages, message=FALSE, warning=FALSE, echo = FALSE}
 library(tidyverse)

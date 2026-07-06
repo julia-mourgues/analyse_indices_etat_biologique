@@ -5,8 +5,8 @@
 # lecture des stations
 stations_etude <- read_delim("Output/stations_etude.csv",
                              delim = ";",
-                              show_col_types = FALSE) #%>% 
-  #filter(sta_code_sandre == "03264000")  #à décommenter si besoin, pour choisirles stations étudiées
+                             show_col_types = FALSE) #%>% 
+  # filter(sta_code_sandre == "03264000")  #à décommenter si besoin, pour choisirles stations étudiées
 
 # création des dossier de sortie pour les différents formats
 dir.create(
@@ -35,79 +35,79 @@ dir.create(
 #-------------------------------------------------------------------------------
 # Format PDF
 #-------------------------------------------------------------------------------
-for (i in seq_len(nrow(stations_etude))) {
-  id <- stations_etude$sta_code_sandre[i]
-  nom <- gsub("'", "’", stations_etude$sta_libelle_sandre[i])
-  
-  
-  
-  message("Génération de la fiche ",
-          i,
-          "/",
-          nrow(stations_etude),
-          " - Station ",
-          id,
-          " (",
-          nom,
-          ")")
-  
-  rmarkdown::render(
-    here::here("R/fiches_stations", "080_Fiches_stations_pdf.Rmd"),
-    #Template
-    output_format = "pdf_document",
-    output_dir = "Output/8_Fiches_stations/Fiches-stations-pdf",
-    #Fichier de sortie
-    output_file =
-      paste0("Fiche-station-", id, ".pdf"),
-    params = list(
-      code_station = id,
-      libelle_station = nom,
-      auteur = "OFB DR Normandie"
-    ),
-    clean = TRUE,
-    quiet = TRUE
-  )
-  message("✅ Fiche créée : Fiche-station-", id, ".pdf")
-}
+# for (i in seq_len(nrow(stations_etude))) {
+#   id <- stations_etude$sta_code_sandre[i]
+#   nom <- gsub("'", "’", stations_etude$sta_libelle_sandre[i])
+#   
+#   
+#   
+#   message("Génération de la fiche ",
+#           i,
+#           "/",
+#           nrow(stations_etude),
+#           " - Station ",
+#           id,
+#           " (",
+#           nom,
+#           ")")
+#   
+#   rmarkdown::render(
+#     here::here("R/fiches_stations", "080_Fiches_stations_pdf.Rmd"),
+#     #Template
+#     output_format = "pdf_document",
+#     output_dir = "Output/8_Fiches_stations/Fiches-stations-pdf",
+#     #Fichier de sortie
+#     output_file =
+#       paste0("Fiche-station-", id, ".pdf"),
+#     params = list(
+#       code_station = id,
+#       libelle_station = nom,
+#       auteur = "OFB DR Normandie"
+#     ),
+#     clean = TRUE,
+#     quiet = TRUE
+#   )
+#   message("✅ Fiche créée : Fiche-station-", id, ".pdf")
+# }
 
 #-------------------------------------------------------------------------------
 # Format html
 #-------------------------------------------------------------------------------
 
-for (i in seq_len(nrow(stations_etude))) {
-  id <- stations_etude$sta_code_sandre[i]
-  nom <- gsub("'", "’", stations_etude$sta_libelle_sandre[i])
-  
-  
-  
-  message("Génération de la fiche ",
-          i,
-          "/",
-          nrow(stations_etude),
-          " - Station ",
-          id,
-          " (",
-          nom,
-          ")")
-  
-  rmarkdown::render(
-    here::here("R/fiches_stations", "080_Fiches_stations_html.Rmd"),
-    #Template
-    output_format = "html_document",
-    output_dir = "Output/8_Fiches_stations/Fiches-stations-html",
-    #Fichier de sortie
-    output_file =
-      paste0("Fiche-station-", id, ".html"),
-    params = list(
-      code_station = id,
-      libelle_station = nom,
-      auteur = "OFB DR Normandie"
-    ),
-    clean = TRUE,
-    quiet = TRUE
-  )
-  message("Fiche créée : Fiche-station-", id, ".html")
-}
+# for (i in seq_len(nrow(stations_etude))) {
+#   id <- stations_etude$sta_code_sandre[i]
+#   nom <- gsub("'", "’", stations_etude$sta_libelle_sandre[i])
+#   
+#   
+#   
+#   message("Génération de la fiche ",
+#           i,
+#           "/",
+#           nrow(stations_etude),
+#           " - Station ",
+#           id,
+#           " (",
+#           nom,
+#           ")")
+#   
+#   rmarkdown::render(
+#     here::here("R/fiches_stations", "080_Fiches_stations_html.Rmd"),
+#     #Template
+#     output_format = "html_document",
+#     output_dir = "Output/8_Fiches_stations/Fiches-stations-html",
+#     #Fichier de sortie
+#     output_file =
+#       paste0("Fiche-station-", id, ".html"),
+#     params = list(
+#       code_station = id,
+#       libelle_station = nom,
+#       auteur = "OFB DR Normandie"
+#     ),
+#     clean = TRUE,
+#     quiet = TRUE
+#   )
+#   message("Fiche créée : Fiche-station-", id, ".html")
+# }
 
 #-------------------------------------------------------------------------------
 # Format word
@@ -116,9 +116,9 @@ for (i in seq_len(nrow(stations_etude))) {
 for (i in seq_len(nrow(stations_etude))) {
   id <- stations_etude$sta_code_sandre[i]
   nom <- gsub("'", "’", stations_etude$sta_libelle_sandre[i])
-  
-  
-  
+
+
+
   message("Génération de la fiche ",
           i,
           "/",
@@ -128,7 +128,7 @@ for (i in seq_len(nrow(stations_etude))) {
           " (",
           nom,
           ")")
-  
+
   rmarkdown::render(
     here::here("R/fiches_stations", "080_Fiches_stations_html.Rmd"),
     #Template
