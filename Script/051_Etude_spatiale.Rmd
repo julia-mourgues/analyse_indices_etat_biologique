@@ -34,16 +34,7 @@ library(data.table)
 ## Chargement des données
 
 ```{r}
-fichiers <- list.files(
-  path = "../Data/clean_data/Models",         
-  pattern = "^pentes_LMM.*\\.rds$",
-  full.names = TRUE
-)
-
-liste_tables <- lapply(fichiers, readRDS)
-
-pentes_LMM <- bind_rows(liste_tables)
-
+load(here("Data/clean_data", "results_LMM.rda"))
 context <- readRDS(here("Data/clean_data", "context_stations_complet.rds"))
 mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
 ```
@@ -51,6 +42,7 @@ mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
 
 ## Préparation des données
 ```{r}
+#table contenant les variables spatiales
 context <- context %>% 
   st_drop_geometry() %>% 
   dplyr::select(-pct, 
@@ -64,60 +56,42 @@ context <- context %>%
   pivot_wider(names_from="categorie",
               values_from="surface_ha")
 
-#Reagrder pour quelles variables nous avons des NA
-colSums(is.na(context))
-```
+#Les LM ne supportent pas les NA, il faut vérifier que les variables utilisées dans nos LM n'en contiennent pas.
+context_2 <- context %>%
+  mutate(across(where(is.numeric), ~replace(., is.na(.), 0))) %>% # remplacer les NA des variables numériques par 0
+  select(
+    -code_sta_pp,
+    -sta_libelle_sandre,
+    -dept,
+    -sta_coordonnees_x,
+    -sta_coordonnees_y,
+    -LARGEUR
+  ) %>%
+  rename_with(
+    ~ .x %>%
+      stri_trans_general("Latin-ASCII") %>% # supprimer les accents
+      gsub("[ -]+", "_", .) %>%             # remplacer espaces et "-" par "_"
+      gsub("[^A-Za-z0-9_]", "_", .)         # remplacer les autres caractères spéciaux par "_"
+  )
 
-Les LM ne supportent pas les NA, il faut vérifier que les variables utilisées dans nos LM n'en contiennent pas.
-
-```{r}
-context <- mutate_if(context, is.numeric, ~replace(., is.na(.), 0))
-
-context_2 <- context %>% 
-  dplyr::select(
-      -code_sta_pp,
-      -sta_libelle_sandre,
-      -dept,
-      -sta_coordonnees_x,
-      -sta_coordonnees_y,
-      -LARGEUR
-    )
-```
-
-```{r}
-#enlever les caractères spéciaux dans le nom des variables
-names(context_2) <- context_2 %>%
-  names() %>%
-  stri_trans_general("Latin-ASCII") %>%
-  gsub("[ -]+", "_", .) %>%
-  gsub("[^A-Za-z0-9_]", "_", .)
-
-names(context_2)
-```
-
-### Table contenant les pentes des tendances
-```{r}
+#table contenant les tendances stationnelles des indices
 pentes_LMM_2<- pentes_LMM %>% 
   pivot_wider(
     values_from= pente,
     names_from = libelle_indice) 
-```
 
-### Jointure des pentes et des données environnementales
-```{r}
-pente_context <- left_join(
-  pentes_LMM_2,
-  context_2,
-  by=c("code_station"="sta_code_sandre"))
-
-pente_context <- pente_context %>% 
-  mutate(libelle_typologie=as.factor(libelle_typologie),
-         reseaux=as.factor(reseaux),
-         GIGE_Sthr = as.numeric(GIGE_Sthr))
+#Jointure des pentes et du contexte spatial
+pente_context <- left_join(pentes_LMM_2,
+                           context_2,
+                           by = c("code_station" = "sta_code_sandre")) %>% 
+    mutate(
+    libelle_typologie = as.factor(libelle_typologie),
+    reseaux = as.factor(reseaux),
+    GIGE_Sthr = as.numeric(GIGE_Sthr))
 ```
 
 
-# ACP pour réduire le nombre de variables utilisées
+# 1. ACP pour réduire le nombre de variables utilisées
 
 ## Variables CORINE Land Cover
 Nous avons plusieurs variables relatives à l'occupation du sol. Nous ne pourrons pas les utiliser toutes en même temps car on va avoir un problème de multicolinéarité. Nous allons donc réaliser une ACP entre ces variables et nos stations, afin de récupérer la positions de nos stations sur l'axe 1. C'est cette variable qui sera ensuite utilisée dans nos modèles.
@@ -139,14 +113,11 @@ var_clc_depart <- pente_context %>%
   ) 
 ```
 
-```{r}
-cor(var_clc_depart[, -c(1,2)])
-```
 
-### Sélection des variables
-
+## Sélection des variables
 
 ```{r}
+#on fait une premiere sélection de variables selon le nombre de données que l'on a pour chaque et la redondance des variables
 var_paysage <- pente_context %>% 
   dplyr::select(
     code_station,
@@ -161,18 +132,24 @@ var_paysage <- pente_context %>%
 ```
 
 ```{r}
+#Vérifier les corrélations entre variables
 cor(var_paysage[, -c(1,2)])
 ```
-### Réaliser l'ACP
+
+## Réaliser l'ACP
+Cette ACP va permettre de réuire les données sous forme de gradients synthétiques
 ```{r}
-res_pca_paysage <- PCA(var_paysage[, -c(1,2)], scale.unit = TRUE, graph = FALSE)
+res_pca_paysage <- PCA(var_paysage[, -c(1,2)], 
+                       scale.unit = TRUE, 
+                       graph = FALSE)
 ```
 
-
-### Graphiques
 ```{r}
+# Graphique 1: ACP présentant les variables
 png("../Output/6_Analyse_spatiale/ACP_var_paysage.png",
-    width = 2000, height = 2000,res = 300)
+    width = 2000, 
+    height = 2000,
+    res = 300)
 
 fviz_pca_var(res_pca_paysage,
              col.var = "cos2",
@@ -188,6 +165,7 @@ fviz_pca_var(res_pca_paysage,
 
 dev.off()
 
+# Graphique 2: ACP avec les variables et les noms des stations
 png("../Output/6_Analyse_spatiale/ACP_var_paysage_stations.png",
    width = 5000,
     height = 3300,
@@ -222,22 +200,20 @@ fviz_pca_biplot(
 ) 
 
 dev.off()
-```
 
-```{r}
+#affiche rle résumé de l'ACP
 summary(res_pca_paysage)
 ```
-
-axe 1 explique 48.4% de la variance. Il oppose prairies agricoles (gauche) aux forets / surfaces artificialisée (droite)
 
 
 ## Création des variables "landuse" et "land_div" 
 
-Nous récupérons les coordonnées des stations sur l'axe 1 des deux ACP¨réalisées afin de créer deux nouvelles variables:
+Nous récupérons les coordonnées des stations sur l'axe 1 et sur l'axe 2 de l'ACP afin de créer deux nouvelles variables:
 - "land_div" correspond à un gradient d'occupation du sol, où les valeurs négatives traduisent une domination par les prairies;
 - "land_duse" correspond à un gradient forets-cultures (valeurs positives pour forets)
 
 ```{r}
+#récupérer l'objet contenant les coordonnées des stations sur les axes de l'ACP
 pca_coords <- as.data.frame(res_pca_paysage$ind$coord)
 pca_coords$code_station <- var_paysage$code_station
 
@@ -246,9 +222,8 @@ pca_coords <- pca_coords %>%
     land_div = Dim.1,
     land_use = Dim.2
   )
-```
 
-```{r}
+#Ajouter les variables dans la table utilisée pour les analyses
 pente_context_2 <- pente_context %>% 
   left_join(pca_coords %>% 
               dplyr::select(-`Dim.3`, -`Dim.4` , -`Dim.5`), 
@@ -256,10 +231,9 @@ pente_context_2 <- pente_context %>%
 ```
 
 
+# 2. Régressions multiples
 
-# Régressions multiples
-
-Afin d'avoir des modeles stable, nous allons normaliser les variables afin d'avoir les memes ordres de grandeur. 
+Afin d'avoir des modèles stables, nous allons normaliser les variables afin d'avoir les mêmes ordres de grandeur. 
 ```{r}
 #objet contenant les variables à normaliser
 var_scale <- c(
@@ -272,6 +246,12 @@ var_scale <- c(
             "land_use",
             "land_div")
 
+#normaliser les variables
+pente_context_scale <- pente_context_2 %>% 
+  mutate(across(all_of(var_scale), ~ as.numeric(scale(.))))
+
+#Objet contenant les variables qi=ui seront étudiées
+#contient les variables à normaliser + les facteurs
 var_etude <- c("reseaux",
             "libelle_typologie",
             "GIGE_Sthr",
@@ -282,11 +262,6 @@ var_etude <- c("reseaux",
             "temp_juillet",
             "land_use",
             "land_div")
-```
-
-```{r}
-pente_context_scale <- pente_context_2 %>% 
-  mutate(across(all_of(var_scale), ~ as.numeric(scale(.))))
 ```
 
 
@@ -302,16 +277,15 @@ LM_IPR <- lm(formule_IPR, data = pente_context_scale)
 ```
 
 ```{r}
-# Get the model residuals
+# récupérer les résidus du modèle
 res_IPR = LM_IPR$residuals
 
-# Plot the result
+# Plotter les résultats
 hist(res_IPR)
+
+#graphique DHARMa pour diagnostique du modèle
 sim_IPR  <- simulateResiduals(LM_IPR)
-
-# Affichage côte à côte
 par(mfrow = c(2, 2))
-
 plot(sim_IPR, main = "DHARMa - IPR")
 ```
 
@@ -324,10 +298,9 @@ les conditions d'application sont respectées
 On va examiner les facteurs d'inflation de la variance (FIV).
 -> Si tous les FIV sont égaux à 1, il n’existe pas de multicolinéarité, mais si certains FIV sont supérieurs à 1, les prédicteurs sont corrélés. Il n’y a pas de consensus sur la valeur au-delà de laquelle on doit considérer qu’il y a multicolinéarité.
 ```{r}
+#graphique multicolinéarité
 vif_IPR<- LM_IPR %>% 
   performance::check_collinearity()
-
-vif_IPR
 
 plot <- plot(vif_IPR)
 
@@ -338,7 +311,6 @@ ggplot2::ggsave(
   height = 4,
   dpi = 300
 )
-
 ```
 
 #### Interprétation du modèle
@@ -347,17 +319,32 @@ summary(LM_IPR)
 ```
 pente et temp_juillet sont significatives
 
-#### Sélection des modeles les plus robustes
-Nous allons garder les modèles qui ont une différence d'AIC inférieure à 2. 
-```{r}
-options(na.action = "na.fail")
-d_ipr <- dredge(LM_IPR) #contient tous les modeles possibles
-d_ipr$modele_id <- as.numeric(rownames(d_ipr))
+#### Sélection des modèles les plus robustes
 
-detail_mod_ipr <- get.models(d_ipr, subset = delta < 4) # contient une liste des modèles retenus avec leurs formules
-mod_ipr <- model.avg(d_ipr, rank=AICc, subset = delta < 4) # content les scores des modeles retenus (AIC..)
-sw(mod_ipr) # Fonction permettant d'obtenir les poids des variables, c'est-à-dire leur taux de présence dans les modeles retenus
-donnees_reg_ipr <- as.data.frame(mod_ipr$msTable) 
+Nous allons garder les modèles qui ont une différence d'AICc inférieure à 4. 
+```{r}
+options(na.action = "na.fail") #empecher les valeurs manquantes, pour que tous les modèles soient calibrés sur le même échantillon
+
+#Générer tous les modèles possibles
+d_ipr <- dredge(LM_IPR) 
+d_ipr$modele_id <- as.numeric(rownames(d_ipr)) #associer un identifiant à chaque modèle
+
+#Extraire les modèles retenus (avec le détail des formules et les AICc)
+detail_mod_ipr <- get.models(
+  d_ipr,
+  rank = AICc,
+  subset = delta < 4) #critère pour sélectionner les meilleurs modèles
+
+#Faire une moyenne des modèles
+mod_ipr <- model.avg( 
+  d_ipr, 
+  rank = AICc, #sélection sur les AICc
+  subset = delta < 4) #critère pour sélectionner les meilleurs modèles
+
+#extraire la table des modèles retenus
+donnees_reg_ipr <- as.data.frame(mod_ipr$msTable)
+
+#Réassocier les identifiants des modèles
 donnees_reg_ipr$modele_id <- as.numeric(rownames(subset(d_ipr, delta < 4)))
 ```
 
@@ -365,31 +352,31 @@ donnees_reg_ipr$modele_id <- as.numeric(rownames(subset(d_ipr, delta < 4)))
 
 ### Données et résultats
 
-#### Récuppérer les poids des variables
+#### Récupérer les poids des variables et leur coefficient
 
 ```{r}
-poids_IPR <- as.data.frame(unclass(sw(mod_ipr)))
+#Extraire les poids des variables, c'est-à-dire leur taux de présence dans les modèles retenus
+poids_IPR <- as.data.frame(unclass(sw(mod_ipr))) #c'est la fonction sw() qui permet d'extraire les poids
+
+#organisation de la table
 poids_IPR$variable <- rownames(poids_IPR)
 rownames(poids_IPR) <- NULL
 poids_IPR <- poids_IPR %>% 
   rename(poids = colnames(.)[1]) %>% 
   mutate(libelle_indice="IPR",
          poids= round(poids, 2)) 
-```
 
-```{r}
 #récupérer les coefficients associés à chaque variable
 coef_full_ipr <- as.data.frame(coef(mod_ipr, full = TRUE))
 coef_full_ipr$variable <- rownames(coef_full_ipr)
 rownames(coef_full_ipr) <- NULL
 
+#organisation de la table
 coef_IPR <- coef_full_ipr %>% 
   rename(coef_full = colnames(.)[1]) %>% 
   mutate(libelle_indice = "IPR",
          coef_full=round(coef_full, 3))
-```
 
-```{r}
 # mise en forme du tableau en rassemblant les 2 colonnes crées
 result_IPR <- poids_IPR %>% 
   left_join(coef_IPR, by = c("variable", "libelle_indice")) %>% 
@@ -398,13 +385,14 @@ result_IPR <- poids_IPR %>%
   dplyr::select(-coef_full, -poids)
 ```
 
+
 #### Récupérer les R² des modeles retenus
 
 ```{r}
 r2_vals_ipr <- lapply(detail_mod_ipr, function(m) summary(m)$r.squared)
 
 r2_ipr_df <- data.frame(
-  modele_id = names(detail_mod_ipr),
+  modele_id = names(detail_mod_ipr), #identifiant du modèle
   R2 = unlist(r2_vals_ipr)
 )
 
@@ -413,7 +401,7 @@ r2_ipr_df
 
 ### Création des tableaux complets
 ```{r}
-# tableau avec scores des modeles, formules et R2
+# tableau avec scores des modèles, formules et R2
 donnees_reg_ipr<- donnees_reg_ipr %>% 
   mutate(libelle_indice="IPR",
          modele_id=as.character(modele_id)) %>% 
@@ -435,8 +423,10 @@ result_IPR <- result_IPR %>%
   mutate(nb_mod_select = nb_mod_ipr)
 ```
 
-### Graphiques pente indice vs métriques
+### Scatterplot pente indice vs métriques
 ```{r}
+#scatterplots sont fait automatiquement avec la fonction visreg(), mais une variable à la fois
+#ici on utilise visreg() dans une fonction pour avoir le graph généré pour l'ensemble des variables étudiées
 plots_IPR <- lapply(var_etude, function(v) {
   visreg(LM_IPR, v, gg = TRUE)+
     theme_bw()
@@ -460,22 +450,24 @@ ggplot2::ggsave(
 
 
 ### Préparation graphique coefficients modeles
-
+L'objectif globale de ce script est de générer une figure commune aux 4 indices, présentant les coefficients des variables spatiales.
+On va donc stocker les données qui seront nécessaires pour générer ce graphique.
 ```{r}
-options(na.action = "na.fail")
-test_ipr <- dredge(LM_IPR, rank=AICc) #contient tous les modeles possibles
-mod_test_ipr <- model.avg(test_ipr, rank=AICc, subset = delta < 4)
+mA_IPR <- summary(mod_ipr) #résumé du modèle
 
-mA_IPR <- summary(mod_test_ipr)
-df1_IPR<-as.data.frame(mA_IPR$coefmat.full) #selecting full model coefficient averages
+#Récupérer les coefficients estimés et moyennés par variable
+df1_IPR <- as.data.frame(mA_IPR$coefmat.full) #coefficients calculés en full.averaging
 
-CI_IPR <- as.data.frame(confint(mod_test_ipr, full=T)) # get confidence intervals for full model
-df1_IPR$CI.min <-CI_IPR$`2.5 %` #pulling out CIs and putting into same df as coefficient estimates
-df1_IPR$CI.max <-CI_IPR$`97.5 %`# order of coeffients same in both, so no mixups; but should check anyway
-setDT(df1_IPR, keep.rownames = "coefficient") #put rownames into column
-names(df1_IPR) <- gsub(" ", "", names(df1_IPR)) # remove spaces from column headers
-df1_IPR<-df1_IPR %>% 
-  mutate(libelle_indice="IPR")
+#récupérer les intervalles de confiance associés aux coefficients des variables
+CI_IPR <- as.data.frame(confint(mod_ipr, full = TRUE))
+
+df1_IPR$CI.min <- CI_IPR$`2.5 %` #Calculer la limite inférieure de l'intervalle de confiance de chaque variable
+df1_IPR$CI.max <- CI_IPR$`97.5 %`#Calculer la limite supérieure de l'intervalle de confiance de chaque variable
+setDT(df1_IPR, keep.rownames = "coefficient") #stocker les noms de ligne dans une variable
+names(df1_IPR) <- gsub(" ", "", names(df1_IPR)) #retirer les espaces dans les noms de variables
+
+df1_IPR <- df1_IPR %>%
+  mutate(libelle_indice = "IPR")
 ```
 
 
@@ -491,20 +483,19 @@ LM_I2M2 <- lm(formule_I2M2, data = pente_context_scale)
 ```
 
 ```{r}
-# Get the model residuals
+# récupérer les résidus du modèle
 res_I2M2 = LM_I2M2$residuals
 
-# Plot the result
+# Plotter les résultats
 hist(res_I2M2)
+
+#graphique DHARMa pour diagnostique du modèle
 sim_I2M2  <- simulateResiduals(LM_I2M2)
-
-# Affichage côte à côte
 par(mfrow = c(2, 2))
-
 plot(sim_I2M2, main = "DHARMa - I2M2")
 ```
 
-les conditions d'application sont respectées
+Les conditions d'application sont respectées
 
 #### Vérifier l'absence de multicolinéarité
 **multicolinéarité** = plusieurs variables mesurent la même chose, peut rendre les coefficients instables ou non significatifs
@@ -513,12 +504,8 @@ les conditions d'application sont respectées
 On va examiner les facteurs d'inflation de la variance (FIV).
 -> Si tous les FIV sont égaux à 1, il n’existe pas de multicolinéarité, mais si certains FIV sont supérieurs à 1, les prédicteurs sont corrélés. Il n’y a pas de consensus sur la valeur au-delà de laquelle on doit considérer qu’il y a multicolinéarité.
 ```{r}
-car::vif(LM_I2M2)
-
 vif_I2M2<- LM_I2M2 %>% 
   performance::check_collinearity()
-
-vif_I2M2
 
 plot(vif_I2M2)
 ```
@@ -531,17 +518,30 @@ distance_source et temp_juillet sont significatives
 
 
 #### Sélection des modeles les plus robustes
-Nous allons garder les modèles qui ont une différence d'AIC inférieure à 2. 
+Nous allons garder les modèles qui ont une différence d'AICc inférieure à 4. 
 ```{r}
-options(na.action = "na.fail")
-d_I2M2 <- dredge(LM_I2M2) #contient tous les modeles possibles
-d_I2M2$modele_id <- as.numeric(rownames(d_I2M2))
+options(na.action = "na.fail") #empecher les valeurs manquantes, pour que tous les modèles soient calibrés sur le même échantillon
 
-detail_mod_I2M2 <- get.models(d_I2M2, subset = delta < 4) # contient une liste des modèles retenus avec leurs formules
+#Générer tous les modèles possibles
+d_I2M2 <- dredge(LM_I2M2) 
+d_I2M2$modele_id <- as.numeric(rownames(d_I2M2)) #associer un identifiant à chaque modèle
 
-mod_I2M2 <- model.avg(d_I2M2, rank=AICc, subset = delta < 4) # content les scores des modeles retenus (AIC..)
-sw(mod_I2M2) # Fonction permettant d'obtenir les poids des variables, c'est-à-dire leur taux de présence dans les modeles retenus
+#Extraire les modèles retenus (avec le détail des formules et les AICc)
+detail_mod_I2M2 <- get.models(
+  d_I2M2, 
+  rank=AICc,
+  subset = delta < 4) #critère pour sélectionner les meilleurs modèles
+
+#Faire une moyenne des modèles
+mod_I2M2 <- model.avg(
+  d_I2M2, 
+  rank=AICc,
+  subset = delta < 4) #critère pour sélectionner les meilleurs modèles
+
+#extraire la table des modèles retenus
 donnees_reg_I2M2 <- as.data.frame(mod_I2M2$msTable) 
+
+#Réassocier les identifiants des modèles
 donnees_reg_I2M2$modele_id <- as.numeric(rownames(subset(d_I2M2, delta < 4)))
 ```
 
@@ -549,16 +549,17 @@ donnees_reg_I2M2$modele_id <- as.numeric(rownames(subset(d_I2M2, delta < 4)))
 #### Récuppérer les poids des variables
 
 ```{r}
-poids_I2M2 <- as.data.frame(unclass(sw(mod_I2M2)))
+#Extraire les poids des variables, c'est-à-dire leur taux de présence dans les modèles retenus
+poids_I2M2 <- as.data.frame(unclass(sw(mod_I2M2)))  #c'est la fonction sw() qui permet d'extraire les poids
+
+#organisation de la table
 poids_I2M2$variable <- rownames(poids_I2M2)
 rownames(poids_I2M2) <- NULL
 poids_I2M2 <- poids_I2M2 %>% 
   rename(poids = colnames(.)[1]) %>% 
   mutate(libelle_indice="I2M2",
          poids= round(poids, 2)) 
-```
 
-```{r}
 #récupérer les coefficients associés à chaque variable
 coef_full_I2M2 <- as.data.frame(coef(mod_I2M2, full = TRUE))
 coef_full_I2M2$variable <- rownames(coef_full_I2M2)
@@ -568,9 +569,7 @@ coef_I2M2 <- coef_full_I2M2 %>%
   rename(coef_full = colnames(.)[1]) %>% 
   mutate(libelle_indice = "I2M2",
          coef_full=round(coef_full, 3))
-```
 
-```{r}
 # mise en forme du tableau en rassemblant les 2 colonnes crées
 result_I2M2 <- poids_I2M2 %>% 
   left_join(coef_I2M2, by = c("variable", "libelle_indice")) %>% 
@@ -578,13 +577,14 @@ result_I2M2 <- poids_I2M2 %>%
   dplyr::select(-coef_full, -poids)
 ```
 
+
 #### Récupérer les R² des modeles retenus
 
 ```{r}
 r2_vals_I2M2 <- lapply(detail_mod_I2M2, function(m) summary(m)$r.squared)
 
 r2_I2M2_df <- data.frame(
-  modele_id = names(detail_mod_I2M2),
+  modele_id = names(detail_mod_I2M2), #identifiant du modèle
   R2 = unlist(r2_vals_I2M2)
 )
 
@@ -593,7 +593,7 @@ r2_I2M2_df
 
 ### Création des tableaux complets
 ```{r}
-# tableau avec scores des modeles, formules et R2
+# tableau avec scores des modèles, formules et R2
 donnees_reg_I2M2<- donnees_reg_I2M2 %>% 
   mutate(libelle_indice="I2M2",
          modele_id=as.character(modele_id)) %>% 
@@ -607,7 +607,7 @@ formules_I2M2 <- data.frame(
 donnees_reg_I2M2 <- donnees_reg_I2M2 %>%
   left_join(formules_I2M2, by = "modele_id")
 
-# tableau avec coefficients et poids des variables + nombres de modeles retenus pour chaque indice
+# tableau avec coefficients et poids des variables + nombres de modèles retenus pour chaque indice
 nb_mod_I2M2 <- n_distinct(donnees_reg_I2M2$modele_id)
 nb_mod_I2M2
 
@@ -615,20 +615,28 @@ result_I2M2 <- result_I2M2 %>%
   mutate(nb_mod_select = nb_mod_I2M2)
 ```
 
-### Graphiques pente indice vs métriques
+### Scatterplot pente indice vs métriques
 ```{r}
+#scatterplots sont fait automatiquement avec la fonction visreg(), mais une variable à la fois
+#ici on utilise visreg() dans une fonction pour avoir le graph généré pour l'ensemble des variables étudiées
 plots_I2M2 <- lapply(var_etude, function(v) {
-  visreg(LM_I2M2, v, gg = TRUE)+
+  visreg(LM_I2M2, v, gg = TRUE) +
     theme_bw()
 })
 
-facet_I2M2 <- wrap_plots(plots_I2M2)+
-  plot_annotation(title = "Evolution des pentes des tendances temporelles de l'I2M2 en fonction des variables explicatives utilisées dans les régressions linéaires multiples",
-                  subtitle="**I2M2**= Indice Invertébrés Multimétrique.",
+facet_I2M2 <- wrap_plots(plots_I2M2) +
+  plot_annotation(
+    title = "Evolution des pentes des tendances temporelles de l'I2M2 en fonction des variables explicatives utilisées dans les régressions linéaires multiples",
+    subtitle = "**I2M2**= Indice Invertébrés Multimétrique.",
     theme = theme(
-      plot.title = element_textbox_simple(size = 14, face = "bold", margin=margin(t=10, b=10)),
+      plot.title = element_textbox_simple(
+        size = 14,
+        face = "bold",
+        margin = margin(t = 10, b = 10)
+      ),
       plot.subtitle = element_textbox_simple(size = 12)
-    ))
+    )
+  )
 
 ggplot2::ggsave(
   filename = file.path("../Output/6_Analyse_spatiale/pente_vs_variable_I2M2.jpg"),
@@ -639,20 +647,22 @@ ggplot2::ggsave(
 ```
 
 ### Préparation graphique coefficients modeles
+L'objectif globale de ce script est de générer une figure commune aux 4 indices, présentant les coefficients des variables spatiales.
+On va donc stocker les données qui seront nécessaires pour générer ce graphique.
 
 ```{r}
-options(na.action = "na.fail")
-test_I2M2 <- dredge(LM_I2M2, rank=AICc) #contient tous les modeles possibles
-mod_test_I2M2 <- model.avg(test_I2M2, rank=AICc, subset = delta < 4 )
+mA_I2M2 <- summary(mod_I2M2) #résumé du modèle
 
-mA_I2M2 <- summary(mod_test_I2M2)
-df1_I2M2<-as.data.frame(mA_I2M2$coefmat.full) #selecting full model coefficient averages
+#Récupérer les coefficients estimés et moyennés par variable
+df1_I2M2<-as.data.frame(mA_I2M2$coefmat.full) #coefficients calculés en full.averaging
 
-CI_I2M2 <- as.data.frame(confint(mod_test_I2M2, full=T)) # get confidence intervals for full model
-df1_I2M2$CI.min <-CI_I2M2$`2.5 %` #pulling out CIs and putting into same df as coefficient estimates
-df1_I2M2$CI.max <-CI_I2M2$`97.5 %`# order of coeffients same in both, so no mixups; but should check anyway
-setDT(df1_I2M2, keep.rownames = "coefficient") #put rownames into column
-names(df1_I2M2) <- gsub(" ", "", names(df1_I2M2)) # remove spaces from column headers
+#récupérer les intervalles de confiance associés aux coefficients des variables
+CI_I2M2 <- as.data.frame(confint(mod_I2M2, full=T)) 
+
+df1_I2M2$CI.min <-CI_I2M2$`2.5 %` #Calculer la limite inférieure de l'intervalle de confiance de chaque variable
+df1_I2M2$CI.max <-CI_I2M2$`97.5 %` #Calculer la limite supérieure de l'intervalle de confiance de chaque variable
+setDT(df1_I2M2, keep.rownames = "coefficient") #stocker les noms de ligne dans une variable
+names(df1_I2M2) <- gsub(" ", "", names(df1_I2M2)) #retirer les espaces dans les noms de variables
 
 df1_I2M2<-df1_I2M2 %>% 
   mutate(libelle_indice="I2M2")
@@ -670,16 +680,15 @@ LM_IBD <- lm(formule_IBD, data = pente_context_scale)
 ```
 
 ```{r}
-# Get the model residuals
+# récupérer les résidus du modèle
 res_IBD = LM_IBD$residuals
 
-# Plot the result
+# Plotter les résultats
 hist(res_IBD)
+
+#graphique DHARMa pour diagnostique du modèle
 sim_IBD  <- simulateResiduals(LM_IBD)
-
-# Affichage côte à côte
 par(mfrow = c(2, 2))
-
 plot(sim_IBD, main = "DHARMa - IBD")
 ```
 
@@ -692,12 +701,9 @@ les conditions d'application sont respectées
 On va examiner les facteurs d'inflation de la variance (FIV).
 -> Si tous les FIV sont égaux à 1, il n’existe pas de multicolinéarité, mais si certains FIV sont supérieurs à 1, les prédicteurs sont corrélés. Il n’y a pas de consensus sur la valeur au-delà de laquelle on doit considérer qu’il y a multicolinéarité.
 ```{r}
-car::vif(LM_IBD)
-
+#graphique multicolinéarité
 vif_IBD<- LM_IBD %>% 
   performance::check_collinearity()
-
-vif_IBD
 
 plot(vif_IBD)
 ```
@@ -710,17 +716,30 @@ pente, altitude, strhaler et libelle_typologie sont significatives
 
 
 #### Sélection des modeles les plus robustes
-Nous allons garder les modèles qui ont une différence d'AIC inférieure à 2. 
+Nous allons garder les modèles qui ont une différence d'AICc inférieure à 4. 
 ```{r}
-options(na.action = "na.fail")
-d_IBD <- dredge(LM_IBD) #contient tous les modeles possibles
-d_IBD$modele_id <- as.numeric(rownames(d_IBD))
+options(na.action = "na.fail") #empecher les valeurs manquantes, pour que tous les modèles soient calibrés sur le même échantillon
 
-detail_mod_IBD <- get.models(d_IBD, subset = delta < 4) # contient une liste des modèles retenus avec leurs formules
+#Générer tous les modèles possibles
+d_IBD <- dredge(LM_IBD) 
+d_IBD$modele_id <- as.numeric(rownames(d_IBD)) #Générer tous les modèles possibles
 
-mod_IBD <- model.avg(d_IBD, rank=AICc, subset = delta < 4) # content les scores des modeles retenus (AIC..)
-sw(mod_IBD) # Fonction permettant d'obtenir les poids des variables, c'est-à-dire leur taux de présence dans les modeles retenus
+#Extraire les modèles retenus (avec le détail des formules et les AICc)
+detail_mod_IBD <- get.models(
+  d_IBD,
+  rank=AICc,
+  subset = delta < 4) #critère pour sélectionner les meilleurs modèles
+
+#Faire une moyenne des modèles
+mod_IBD <- model.avg(
+  d_IBD, 
+  rank=AICc, 
+  subset = delta < 4) #critère pour sélectionner les meilleurs modèles
+
+#extraire la table des modèles retenus
 donnees_reg_IBD <- as.data.frame(mod_IBD$msTable) 
+
+#Réassocier les identifiants des modèles
 donnees_reg_IBD$modele_id <- as.numeric(rownames(subset(d_IBD, delta < 4)))
 ```
 
@@ -728,34 +747,34 @@ donnees_reg_IBD$modele_id <- as.numeric(rownames(subset(d_IBD, delta < 4)))
 #### Récuppérer les poids des variables
 
 ```{r}
-poids_IBD <- as.data.frame(unclass(sw(mod_IBD)))
+#Extraire les poids des variables, c'est-à-dire leur taux de présence dans les modèles retenus
+poids_IBD <- as.data.frame(unclass(sw(mod_IBD))) #c'est la fonction sw() qui permet d'extraire les poids
+
+#organisation de la table
 poids_IBD$variable <- rownames(poids_IBD)
 rownames(poids_IBD) <- NULL
-poids_IBD <- poids_IBD %>% 
-  rename(poids = colnames(.)[1]) %>% 
-  mutate(libelle_indice="IBD",
-         poids= round(poids, 2)) 
-```
+poids_IBD <- poids_IBD %>%
+  rename(poids = colnames(.)[1]) %>%
+  mutate(libelle_indice = "IBD", poids = round(poids, 2))
 
-```{r}
 #récupérer les coefficients associés à chaque variable
 coef_full_IBD <- as.data.frame(coef(mod_IBD, full = TRUE))
 coef_full_IBD$variable <- rownames(coef_full_IBD)
 rownames(coef_full_IBD) <- NULL
 
-coef_IBD <- coef_full_IBD %>% 
-  rename(coef_full = colnames(.)[1]) %>% 
+#organisation de la table
+coef_IBD <- coef_full_IBD %>%
+  rename(coef_full = colnames(.)[1]) %>%
   mutate(libelle_indice = "IBD",
-         coef_full=round(coef_full, 3))
-```
+         coef_full = round(coef_full, 3))
 
-```{r}
 # mise en forme du tableau en rassemblant les 2 colonnes crées
-result_IBD <- poids_IBD %>% 
-  left_join(coef_IBD, by = c("variable", "libelle_indice")) %>% 
-  mutate(coef_poids = paste(coef_full, "(",poids,")")) %>% 
+result_IBD <- poids_IBD %>%
+  left_join(coef_IBD, by = c("variable", "libelle_indice")) %>%
+  mutate(coef_poids = paste(coef_full, "(", poids, ")")) %>%
   dplyr::select(-coef_full, -poids)
 ```
+
 
 #### Récupérer les R² des modeles retenus
 
@@ -763,7 +782,7 @@ result_IBD <- poids_IBD %>%
 r2_vals_IBD <- lapply(detail_mod_IBD, function(m) summary(m)$r.squared)
 
 r2_IBD_df <- data.frame(
-  modele_id = names(detail_mod_IBD),
+  modele_id = names(detail_mod_IBD), #identifiant du modèle
   R2 = unlist(r2_vals_IBD)
 )
 
@@ -773,14 +792,16 @@ r2_IBD_df
 ### Création des tableaux complets
 ```{r}
 # tableau avec scores des modeles, formules et R2
-donnees_reg_IBD<- donnees_reg_IBD %>% 
-  mutate(libelle_indice="IBD",
-         modele_id=as.character(modele_id)) %>% 
-  left_join(r2_IBD_df, by="modele_id")
+donnees_reg_IBD <- donnees_reg_IBD %>%
+  mutate(libelle_indice = "IBD", modele_id = as.character(modele_id)) %>%
+  left_join(r2_IBD_df, by = "modele_id")
 
 formules_IBD <- data.frame(
   modele_id = names(detail_mod_IBD),
-  formule = sapply(detail_mod_IBD, function(m) paste(deparse(formula(m)), collapse = ""))
+  formule = sapply(detail_mod_IBD, function(m)
+    paste(deparse(formula(
+      m
+    )), collapse = ""))
 )
 
 donnees_reg_IBD <- donnees_reg_IBD %>%
@@ -790,25 +811,33 @@ donnees_reg_IBD <- donnees_reg_IBD %>%
 nb_mod_IBD <- n_distinct(donnees_reg_IBD$modele_id)
 nb_mod_IBD
 
-result_IBD <- result_IBD %>% 
+result_IBD <- result_IBD %>%
   mutate(nb_mod_select = nb_mod_IBD)
 ```
 
 ### Graphiques pente indice vs métriques
 
 ```{r}
+#scatterplots sont fait automatiquement avec la fonction visreg(), mais une variable à la fois
+#ici on utilise visreg() dans une fonction pour avoir le graph généré pour l'ensemble des variables étudiées
 plots_IBD <- lapply(var_etude, function(v) {
-  visreg(LM_IBD, v, gg = TRUE)+
+  visreg(LM_IBD, v, gg = TRUE) +
     theme_bw()
 })
 
-facet_IBD <- wrap_plots(plots_IBD)+
-  plot_annotation(title = "Evolution des pentes des tendances temporelles de l'IBD en fonction des variables explicatives utilisées dans les régressions linéaires multiples",
-                  subtitle="**IBD**= Indice Biologique Diatomées.",
+facet_IBD <- wrap_plots(plots_IBD) +
+  plot_annotation(
+    title = "Evolution des pentes des tendances temporelles de l'IBD en fonction des variables explicatives utilisées dans les régressions linéaires multiples",
+    subtitle = "**IBD**= Indice Biologique Diatomées.",
     theme = theme(
-      plot.title = element_textbox_simple(size = 14, face = "bold", margin=margin(t=10, b=10)),
+      plot.title = element_textbox_simple(
+        size = 14,
+        face = "bold",
+        margin = margin(t = 10, b = 10)
+      ),
       plot.subtitle = element_textbox_simple(size = 12)
-    ))
+    )
+  )
 
 ggplot2::ggsave(
   filename = file.path("../Output/6_Analyse_spatiale/pente_vs_variable_IBD.jpg"),
@@ -819,20 +848,21 @@ ggplot2::ggsave(
 ```
 
 ### Préparation graphique coefficients modeles
-
+L'objectif globale de ce script est de générer une figure commune aux 4 indices, présentant les coefficients des variables spatiales.
+On va donc stocker les données qui seront nécessaires pour générer ce graphique.
 ```{r}
-options(na.action = "na.fail")
-test_IBD <- dredge(LM_IBD, rank=AICc) #contient tous les modeles possibles
-mod_test_IBD <- model.avg(test_IBD, rank=AICc, subset=delta < 4)
+mA_IBD <- summary(mod_IBD) #résumé du modèle
 
-mA_IBD <- summary(mod_test_IBD)
-df1_IBD<-as.data.frame(mA_IBD$coefmat.full) #selecting full model coefficient averages
+#Récupérer les coefficients estimés et moyennés par variable
+df1_IBD<-as.data.frame(mA_IBD$coefmat.full) #coefficients calculés en full averaging
 
-CI_IBD <- as.data.frame(confint(mod_test_IBD, full=T)) # get confidence intervals for full model
-df1_IBD$CI.min <-CI_IBD$`2.5 %` #pulling out CIs and putting into same df as coefficient estimates
-df1_IBD$CI.max <-CI_IBD$`97.5 %`# order of coeffients same in both, so no mixups; but should check anyway
-setDT(df1_IBD, keep.rownames = "coefficient") #put rownames into column
-names(df1_IBD) <- gsub(" ", "", names(df1_IBD)) # remove spaces from column headers
+#récupérer les intervalles de confiance associés aux coefficients des variables
+
+CI_IBD <- as.data.frame(confint(mod_IBD, full=T)) #Calculer la limite inférieure de l'intervalle de confiance de chaque variable
+df1_IBD$CI.min <-CI_IBD$`2.5 %` #Calculer la limite supérieure de l'intervalle de confiance de chaque variable
+df1_IBD$CI.max <-CI_IBD$`97.5 %`#Calculer la limite supérieure de l'intervalle de confiance de chaque variable
+setDT(df1_IBD, keep.rownames = "coefficient") #stocker les noms de ligne dans une variable
+names(df1_IBD) <- gsub(" ", "", names(df1_IBD)) #retirer les espaces dans les noms de variables
 
 df1_IBD<-df1_IBD %>% 
   mutate(libelle_indice="IBD")
@@ -850,16 +880,15 @@ LM_IBMR <- lm(formule_IBMR, data = pente_context_scale)
 ```
 
 ```{r}
-# Get the model residuals
+# récupérer les résidus du modèle
 res_IBMR = LM_IBMR$residuals
 
-# Plot the result
+# Plotter les résultats
 hist(res_IBMR)
+
+#graphique DHARMa pour diagnostique du modèle
 sim_IBMR  <- simulateResiduals(LM_IBMR)
-
-# Affichage côte à côte
 par(mfrow = c(2, 2))
-
 plot(sim_IBMR, main = "DHARMa - IBMR")
 ```
 
@@ -872,12 +901,8 @@ les conditions d'application sont respectées
 On va examiner les facteurs d'inflation de la variance (FIV).
 -> Si tous les FIV sont égaux à 1, il n’existe pas de multicolinéarité, mais si certains FIV sont supérieurs à 1, les prédicteurs sont corrélés. Il n’y a pas de consensus sur la valeur au-delà de laquelle on doit considérer qu’il y a multicolinéarité.
 ```{r}
-car::vif(LM_IBMR)
-
 vif_IBMR<- LM_IBMR %>% 
   performance::check_collinearity()
-
-vif_IBMR
 
 plot(vif_IBMR)
 ```
@@ -890,17 +915,30 @@ aucune variable n'est significatives
 
 
 #### Sélection des modeles les plus robustes
-Nous allons garder les modèles qui ont une différence d'AIC inférieure à 2. 
+Nous allons garder les modèles qui ont une différence d'AICc inférieure à 4. 
 ```{r}
-options(na.action = "na.fail")
-d_IBMR <- dredge(LM_IBMR) #contient tous les modeles possibles
-d_IBMR$modele_id <- as.numeric(rownames(d_IBMR))
+options(na.action = "na.fail")  #empecher les valeurs manquantes, pour que tous les modèles soient calibrés sur le même échantillon
 
-detail_mod_IBMR <- get.models(d_IBMR, subset = delta < 4) # contient une liste des modèles retenus avec leurs formules
+#Générer tous les modèles possibles
+d_IBMR <- dredge(LM_IBMR) 
+d_IBMR$modele_id <- as.numeric(rownames(d_IBMR)) #associer un identifiant à chaque modèle
 
-mod_IBMR <- model.avg(d_IBMR, rank=AICc, subset = delta < 4) # content les scores des modeles retenus (AIC..)
-sw(mod_IBMR) # Fonction permettant d'obtenir les poids des variables, c'est-à-dire leur taux de présence dans les modeles retenus
+#Extraire les modèles retenus (avec le détail des formules et les AICc)
+detail_mod_IBMR <- get.models(
+  d_IBMR, 
+  rank=AICc, #sélection sur les AICc
+  subset = delta < 4) #critère pour sélectionner les meilleurs modèles
+
+#Faire une moyenne des modèles
+mod_IBMR <- model.avg(
+  d_IBMR, 
+  rank=AICc, #sélection sur les AICc
+  subset = delta < 4) #critère pour sélectionner les meilleurs modèles
+
+#extraire la table des modèles retenus
 donnees_reg_IBMR <- as.data.frame(mod_IBMR$msTable) 
+
+#Réassocier les identifiants des modèles
 donnees_reg_IBMR$modele_id <- as.numeric(rownames(subset(d_IBMR, delta < 4)))
 ```
 
@@ -908,25 +946,31 @@ donnees_reg_IBMR$modele_id <- as.numeric(rownames(subset(d_IBMR, delta < 4)))
 #### Récupérer les poids des variables
 
 ```{r}
-poids_IBMR <- as.data.frame(unclass(sw(mod_IBMR)))
+#Extraire les poids des variables, c'est-à-dire leur taux de présence dans les modèles retenus
+poids_IBMR <- as.data.frame(unclass(sw(mod_IBMR))) #c'est la fonction sw() qui permet d'extraire les poids
+
+#organisation de la table
 poids_IBMR$variable <- rownames(poids_IBMR)
 rownames(poids_IBMR) <- NULL
-poids_IBMR <- poids_IBMR %>% 
-  rename(poids = colnames(.)[1]) %>% 
-  mutate(libelle_indice="IBMR",
-         poids= round(poids, 2)) 
-```
+poids_IBMR <- poids_IBMR %>%
+  rename(poids = colnames(.)[1]) %>%
+  mutate(libelle_indice = "IBMR", poids = round(poids, 2))
 
-```{r}
 #récupérer les coefficients associés à chaque variable
 coef_full_IBMR <- as.data.frame(coef(mod_IBMR, full = TRUE))
 coef_full_IBMR$variable <- rownames(coef_full_IBMR)
 rownames(coef_full_IBMR) <- NULL
 
-coef_IBMR <- coef_full_IBMR %>% 
-  rename(coef_full = colnames(.)[1]) %>% 
+coef_IBMR <- coef_full_IBMR %>%
+  rename(coef_full = colnames(.)[1]) %>%
   mutate(libelle_indice = "IBMR",
-         coef_full=round(coef_full, 3))
+         coef_full = round(coef_full, 3))
+
+# mise en forme du tableau en rassemblant les 2 colonnes crées
+result_IBMR <- poids_IBMR %>%
+  left_join(coef_IBMR, by = c("variable", "libelle_indice")) %>%
+  mutate(coef_poids = paste(coef_full, "(", poids, ")")) %>%
+  dplyr::select(-coef_full, -poids)
 ```
 
 ```{r}
@@ -943,7 +987,7 @@ result_IBMR <- poids_IBMR %>%
 r2_vals_IBMR <- lapply(detail_mod_IBMR, function(m) summary(m)$r.squared)
 
 r2_IBMR_df <- data.frame(
-  modele_id = names(detail_mod_IBMR),
+  modele_id = names(detail_mod_IBMR), #identifiant du modèle
   R2 = unlist(r2_vals_IBMR)
 )
 
@@ -953,14 +997,16 @@ r2_IBMR_df
 ### Création des tableaux complets
 ```{r}
 # tableau avec scores des modeles, formules et R2
-donnees_reg_IBMR<- donnees_reg_IBMR %>% 
-  mutate(libelle_indice="IBMR",
-         modele_id=as.character(modele_id)) %>% 
-  left_join(r2_IBMR_df, by="modele_id")
+donnees_reg_IBMR <- donnees_reg_IBMR %>%
+  mutate(libelle_indice = "IBMR", modele_id = as.character(modele_id)) %>%
+  left_join(r2_IBMR_df, by = "modele_id")
 
 formules_IBMR <- data.frame(
   modele_id = names(detail_mod_IBMR),
-  formule = sapply(detail_mod_IBMR, function(m) paste(deparse(formula(m)), collapse = ""))
+  formule = sapply(detail_mod_IBMR, function(m)
+    paste(deparse(formula(
+      m
+    )), collapse = ""))
 )
 
 donnees_reg_IBMR <- donnees_reg_IBMR %>%
@@ -970,24 +1016,33 @@ donnees_reg_IBMR <- donnees_reg_IBMR %>%
 nb_mod_IBMR <- n_distinct(donnees_reg_IBMR$modele_id)
 nb_mod_IBMR
 
-result_IBMR <- result_IBMR %>% 
+result_IBMR <- result_IBMR %>%
   mutate(nb_mod_select = nb_mod_IBMR)
 ```
 
-### Graphiques pente indice vs métriques
+### Scatterplot pente indice vs métriques
 ```{r}
+#scatterplots sont fait automatiquement avec la fonction visreg(), mais une variable à la fois
+#ici on utilise visreg() dans une fonction pour avoir le graph généré pour l'ensemble des variables étudiées
+
 plots_IBMR <- lapply(var_etude, function(v) {
-  visreg(LM_IBMR, v, gg = TRUE)+
+  visreg(LM_IBMR, v, gg = TRUE) +
     theme_bw()
 })
 
-facet_IBMR <- wrap_plots(plots_IBMR)+
-  plot_annotation(title = "Evolution des pentes des tendances temporelles de l'IBMR en fonction des variables explicatives utilisées dans les régressions linéaires multiples",
-                  subtitle="**IBMR**= Indice Biologique Macrophytes en Rivière.",
+facet_IBMR <- wrap_plots(plots_IBMR) +
+  plot_annotation(
+    title = "Evolution des pentes des tendances temporelles de l'IBMR en fonction des variables explicatives utilisées dans les régressions linéaires multiples",
+    subtitle = "**IBMR**= Indice Biologique Macrophytes en Rivière.",
     theme = theme(
-      plot.title = element_textbox_simple(size = 14, face = "bold", margin=margin(t=10, b=10)),
+      plot.title = element_textbox_simple(
+        size = 14,
+        face = "bold",
+        margin = margin(t = 10, b = 10)
+      ),
       plot.subtitle = element_textbox_simple(size = 12)
-    ))
+    )
+  )
 
 ggplot2::ggsave(
   filename = file.path("../Output/6_Analyse_spatiale/pente_vs_variable_IBMR.jpg"),
@@ -998,167 +1053,207 @@ ggplot2::ggsave(
 ```
 
 ### Préparation graphique coefficients modeles
+L'objectif globale de ce script est de générer une figure commune aux 4 indices, présentant les coefficients des variables spatiales.
+On va donc stocker les données qui seront nécessaires pour générer ce graphique.
 
 ```{r}
-options(na.action = "na.fail")
-test_IBMR <- dredge(LM_IBMR, rank=AICc) #contient tous les modeles possibles
-mod_test_IBMR <- model.avg(test_IBMR, rank=AICc, subset=delta < 4)
+mA_IBMR <- summary(mod_IBMR) #résumé du modèle
 
-mA_IBMR <- summary(mod_test_IBMR)
-df1_IBMR<-as.data.frame(mA_IBMR$coefmat.full) #selecting full model coefficient averages
+#Récupérer les coefficients estimés et moyennés par variable
+df1_IBMR<-as.data.frame(mA_IBMR$coefmat.full) #coefficients calculés en full.averaging
 
-CI_IBMR <- as.data.frame(confint(mod_test_IBMR, full=T)) # get confidence intervals for full model
-df1_IBMR$CI.min <-CI_IBMR$`2.5 %` #pulling out CIs and putting into same df as coefficient estimates
-df1_IBMR$CI.max <-CI_IBMR$`97.5 %`# order of coeffients same in both, so no mixups; but should check anyway
-setDT(df1_IBMR, keep.rownames = "coefficient") #put rownames into column
-names(df1_IBMR) <- gsub(" ", "", names(df1_IBMR)) # remove spaces from column headers
+#récupérer les intervalles de confiance associés aux coefficients des variables
+CI_IBMR <- as.data.frame(confint(mod_test_IBMR, full=T)) 
+
+df1_IBMR$CI.min <-CI_IBMR$`2.5 %` #Calculer la limite inférieure de l'intervalle de confiance de chaque variable
+df1_IBMR$CI.max <-CI_IBMR$`97.5 %` #Calculer la limite supérieure de l'intervalle de confiance de chaque variable
+setDT(df1_IBMR, keep.rownames = "coefficient") #stocker les noms de ligne dans une variable
+names(df1_IBMR) <- gsub(" ", "", names(df1_IBMR)) #retirer les espaces dans les noms de variables
 
 df1_IBMR<-df1_IBMR %>% 
   mutate(libelle_indice="IBMR")
 ```
 
-## Tables et figures bilan
 
-### Tableau rassemblant les coefficients et poids des variables explicatives
+# 3. Tables et figures bilan
+
+## Tableau 1: Coefficients et poids des variables explicatives
 
 ```{r}
-result_reg_multiple <- bind_rows(result_IPR, result_IBD, result_IBMR, result_I2M2)
+#jointure des tables contenant les coeff et poids
+result_reg_multiple <- bind_rows(result_IPR, 
+                                 result_IBD, 
+                                 result_IBMR, 
+                                 result_I2M2)
 
-result_reg_multiple <- result_reg_multiple %>% 
-  pivot_wider(values_from=coef_poids,
+#transformer au format large
+result_reg_multiple <- result_reg_multiple %>%
+  pivot_wider(values_from = coef_poids, 
               names_from = variable)
 ```
 
 ```{r}
-result_reg_multiple_gt <- result_reg_multiple %>% 
-  gt() %>% 
-  tab_options(
-    table.width = pct(70),
-    table.font.size = px(13)
-  ) %>% 
+#Création du tableau gt mis en forme
+result_reg_multiple_gt <- result_reg_multiple %>%
+  gt() %>%
+  
+  #Mise en forme générale de la table
+  tab_options(table.width = pct(70), table.font.size = px(13)) %>%
+  
+  #titres et sous-titres
   gt::tab_header(
-      title = md("**Synthese des effets des variables environnementales sélectionnées par approche multi-modèle**"),
-      subtitle = md("Les résultats sont donnés sous la forme: Coefficient de la variable ( poids de la variable). Si poids= 1, ça signifie que la variable est présente dans tous les modèles retenus; si poids=0.5 alors la variables est présente dans la moitié des modèles retenus.<br>
-**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. ")) %>% 
-  tab_style(
-    style = cell_text(color = "black", weight = "bold", align = "center", size=px(14)),
+    title = md(
+      "**Synthese des effets des variables environnementales sélectionnées par approche multi-modèle**"
+    ),
+    subtitle = md(
+      "Les résultats sont donnés sous la forme: Coefficient de la variable ( poids de la variable). Si poids= 1, ça signifie que la variable est présente dans tous les modèles retenus; si poids=0.5 alors la variables est présente dans la moitié des modèles retenus.<br>
+**I2M2**= Indice Invertébrés Multimétrique; **IBD**= Indice Biologique Diatomées; **IBMR**= Indice Biologique Macrophytes en Rivière; **IPR**= Indice Poisson Rivière. "
+    )
+  ) %>%
+  
+  # définir les styles des cellules et colonnes
+  tab_style( #titre de la table en gras et centré
+    style = cell_text(
+      color = "black",
+      weight = "bold",
+      align = "center",
+      size = px(14)
+    ),
     locations = cells_title("title")
-  ) %>% 
-  tab_style(
-    style = cell_text(color = "black", align = "left", size=px(13)),
+  ) %>%
+  tab_style( #sous-tiitre en gras et aligné sur la gauche
+    style = cell_text(
+      color = "black",
+      align = "left",
+      size = px(13)
+    ),
     locations = cells_title("subtitle")
-  ) %>% 
-  cols_label(
+  ) %>%
+  cols_label( #renommer les labels des variables
     libelle_indice = "Indice",
-    nb_mod_select="Modèles retenus",
-    temp_juillet="T°juillet",
-    distance_source="Distance à la source",
-    land_div="Diversité paysagère",
-    libelle_typologie="Typologie",
-    altitude="Altitude",
-    surface_bv="Surface bassin-versant",
-    GIGE_Sthr="Rang de strahler",
-    pente="Pente",
-    land_use="Utilisation du sol",
-    reseaux="Réseau"
-  )%>% 
+    nb_mod_select = "Modèles retenus",
+    temp_juillet = "T°juillet",
+    distance_source = "Distance à la source",
+    land_div = "Diversité paysagère",
+    libelle_typologie = "Typologie",
+    altitude = "Altitude",
+    surface_bv = "Surface bassin-versant",
+    GIGE_Sthr = "Rang de strahler",
+    pente = "Pente",
+    land_use = "Utilisation du sol",
+    reseaux = "Réseau"
+  ) %>%
+  tab_style( #nom de variables en gras et centrés
+    style = cell_text(align = "center", 
+                              size = px(12)),
+            locations = cells_column_labels()) %>%
   tab_style(
-        style = cell_text(align = "center",size = px(12)),
-        locations = cells_column_labels()) %>% 
-  opt_row_striping() %>% 
-  sub_missing(
-      columns = everything(),
-      missing_text = "-"
-    ) %>% 
+    style = cell_text(align = "center", 
+                              size = px(11)),
+            locations = cells_body(rows = TRUE)) %>%
   tab_style(
-    style = cell_text(align = "center",
-      size = px(11)),
-    locations = cells_body(  
-      rows = TRUE
-    )) %>% 
-  tab_style(
-    style = cell_borders(sides = "bottom", color = "black", weight = px(2)),
+    style = cell_borders(
+      sides = "bottom",
+      color = "black",
+      weight = px(2)
+    ),
     locations = cells_column_labels(everything())
-  ) 
+  ) %>%
+  
+  #colorer une ligne sur deux
+  opt_row_striping() %>%
+  
+  #Mettre un "-" dans les cellules vides
+  sub_missing(columns = everything(), missing_text = "-")
 
-result_reg_multiple_gt
-```
-```{r}
+#télécharger le tableau
 gt::gtsave(result_reg_multiple_gt, filename = "../Output/6_Analyse_spatiale/result_regressions_multiples.html")
 ```
 
 
-### Tableau rassemblant les paramètres des modeles retenus
+## Tableau 2: Paramètres des modeles retenus
 
 ```{r}
+#jointure des tables contenant les données des modèles
 donnees_mod_reg_multiple <- bind_rows(donnees_reg_I2M2, donnees_reg_IBD, donnees_reg_IBMR, donnees_reg_ipr)
 ```
 
 ```{r}
-donnees_reg_multiple_gt <- donnees_mod_reg_multiple %>% 
-  dplyr::select(libelle_indice, formule, modele_id, R2, everything()) %>% 
-  mutate(R2=round(R2, 2),
-         across(where(is.numeric) & !all_of("R2"), ~round(.x, 3))) %>% 
-  gt() %>% 
+#Création du tableau gt mis en forme
+donnees_reg_multiple_gt <- donnees_mod_reg_multiple %>%
+  #Ãrrangement des données
+  dplyr::select(libelle_indice, formule, modele_id, R2, everything()) %>%
+  mutate(R2 = round(R2, 2), across(where(is.numeric) &
+                                     !all_of("R2"), ~ round(.x, 3))) %>%
+  
+  #format gt
+  gt() %>%
+  
+  #Mise en forme générale de la table
   tab_options(
     table.width = pct(100),
-    data_row.padding = px(2),     
+    data_row.padding = px(2),
     heading.padding = px(2),
-    column_labels.padding=px(1)
-  ) %>% 
+    column_labels.padding = px(1)
+  ) %>%
+  
+  #Titre
   gt::tab_header(
-      title = md("**Description des modèles de régressions linéaires multiples retenus par approche multi-modèle**")) %>% 
-  tab_style(
-    style = cell_text(color = "black", weight = "bold", align = "center", size=px(9)),
-    locations = cells_title("title")
-  ) %>% 
-  cols_label(
-    libelle_indice = "Indice",
-    formule="Formule",
-    modele_id= "Identifiant modèle"
-  )%>% 
-  tab_style(
-        style = cell_text(align = "center",size = px(8)),
-        locations = cells_column_labels()) %>% 
-  opt_row_striping() %>% 
-  sub_missing(
-      columns = everything(),
-      missing_text = "-"
-    ) %>% 
-  tab_style(
+    title = md(
+      "**Description des modèles de régressions linéaires multiples retenus par approche multi-modèle**"
+    )
+  ) %>%
+  
+  # définir les styles des cellules et colonnes
+  tab_style( #titre en gras et centré
     style = cell_text(
-      size = px(8)),
-    locations = cells_body(  
-      rows = TRUE
-    )) %>% 
+      color = "black",
+      weight = "bold",
+      align = "center",
+      size = px(9)
+    ),
+    locations = cells_title("title")
+  ) %>%
+  cols_label( #renommer les variables
+    libelle_indice = "Indice",
+    formule = "Formule",
+    modele_id = "Identifiant modèle") %>%
+  tab_style(style = cell_text(align = "center", size = px(8)),
+            locations = cells_column_labels()) %>%
+  tab_style(style = cell_text(size = px(8)), locations = cells_body(rows = TRUE)) %>%
   tab_style(
-    style = cell_borders(sides = "bottom", color = "black", weight = px(2)),
+    style = cell_borders(
+      sides = "bottom",
+      color = "black",
+      weight = px(2)
+    ),
     locations = cells_column_labels(everything())
-  ) %>% 
-  cols_align(
-    align = "left",
-    columns = c("libelle_indice", "formule")
-  ) %>% 
-  cols_align(
-    align = "center",
-     -c(libelle_indice, formule)
-  )
+  ) %>%
+  
+  #colorer une ligne sur deux
+  opt_row_striping() %>%
+  
+  #Mettre un "-" dans les cellules vides
+  sub_missing(columns = everything(), missing_text = "-") %>%
+  
+  #alignement du texte
+  cols_align(align = "left",
+             columns = c("libelle_indice", "formule")) %>%
+  cols_align(align = "center", -c(libelle_indice, formule))
 
-
-donnees_reg_multiple_gt
-```
-
-```{r}
+#télécharger la table
 gt::gtsave(donnees_reg_multiple_gt, filename ="../Output/6_Analyse_spatiale/donnees_modeles_reg_multiples.pdf")
 ```
 
-
-
-### Graphique bilan des coefficients par variables explicatives
+## Graphique bilan des coefficients par variables explicatives
 
 
 ```{r}
-df1 <- bind_rows(df1_IPR,df1_I2M2, df1_IBD, df1_IBMR) %>% 
+#jointure des tbales contenant les coefficient des variables spatiales, issues des regressions linéaires multiples
+df1 <- bind_rows(df1_IPR,
+                 df1_I2M2, 
+                 df1_IBD, 
+                 df1_IBMR) %>% 
   mutate(libelle_indice= case_when(
       libelle_indice=="IBD" ~"pente_IBD",
       libelle_indice=="IBMR" ~"pente_IBMR",
@@ -1167,31 +1262,53 @@ df1 <- bind_rows(df1_IPR,df1_I2M2, df1_IBD, df1_IBMR) %>%
       TRUE~NA
     ))
 
+#arrangement des données
 df1_plot <- df1 %>% 
-  filter(!(coefficient=="(Intercept)"))
+  filter(!(coefficient=="(Intercept)")) %>% 
+   mutate(signif = ifelse (CI.min > 0 | CI.max < 0, #création d'une variable contenant la significativité, en fonction de l'amplitude de l'intervalle de confiance
+                           "significatif", 
+                           "non significatif"))
 
-df1_plot <- df1_plot %>%
-  mutate(signif = ifelse (CI.min > 0 | CI.max < 0, "significatif", "non significatif"))
-         
-plot_coef <- ggplot(data=df1_plot, aes(x=coefficient, y=Estimate))+ #again, excluding intercept because estimates so much larger
-  geom_hline(yintercept=0, color = "red",linetype="dashed", lwd=0.8)+ #add dashed line at zero
-  geom_errorbar(aes(ymin=CI.min, ymax=CI.max), colour="blue", #adj SE
-                  width=0, lwd=0.8) +
-  geom_point(aes(color=signif),size=3)+
-  scale_color_manual(
-  values = c("significatif" = "black", "non significatif" = "grey70")
-)+
-  facet_wrap(~libelle_indice, scales="free_x")+
-labs(
-    title = "Effets des variables explicatives sur les tendances temporelles des EQR selon les modèles de régressions linéaires multiples.",
-    subtitle= "Les barres bleues correspondent à l'intervalle de confiance à 95%.",
-    x = "Coefficient",
-    color="Significativité"
+#Graphiqe
+plot_coef <- ggplot(data = df1_plot, aes(x = coefficient, y = Estimate)) + 
+  #ajout d'une ligne correspondant à la valeur 0
+  geom_hline(
+    yintercept = 0,
+    color = "red",
+    linetype = "dashed",
+    lwd = 0.8
+  ) + 
+  #faire apparaître les intervalles de confiance
+  geom_errorbar(
+    aes(ymin = CI.min, ymax = CI.max),
+    colour = "blue",
+    #adj SE
+    width = 0,
+    lwd = 0.8
   ) +
-  coord_flip()+
-  theme_bw(base_size = 12)+
-  theme(plot.title = element_textbox_simple(size=14, face="bold", margin=margin(t=5,b=10)))
+  #ajout des points correspondant aux coefficients
+  geom_point(aes(color = signif), size = 3) +
+  #colorer en noir seulement les résultats significatifs
+  scale_color_manual(values = c(
+    "significatif" = "black",
+    "non significatif" = "grey70"
+  )) +
+  facet_wrap( ~ libelle_indice, scales = "free_x") +
+  labs(
+    title = "Effets des variables explicatives sur les tendances temporelles des EQR selon les modèles de régressions linéaires multiples.",
+    subtitle = "Les barres bleues correspondent à l'intervalle de confiance à 95%.",
+    x = "Coefficient",
+    color = "Significativité"
+  ) +
+  coord_flip() + #inverser axes x et y
+  theme_bw(base_size = 12) +
+  theme(plot.title = element_textbox_simple(
+    size = 14,
+    face = "bold",
+    margin = margin(t = 5, b = 10)
+  ))
 
+#Télécharger la figure
 ggplot2::ggsave(
   filename = file.path("../Output/6_Analyse_spatiale/plot_coeff_facet.jpg"),
   plot     = plot_coef,
@@ -1199,185 +1316,4 @@ ggplot2::ggsave(
   height   = 8
 )
 ```
-
-
-
-
-
-
-
-
-# Analyse de redondance
-
-## Arrangement des données
-```{r}
-pente_rda <- pente_context_scale %>% 
-  dplyr::select(
-    code_station,
-    I2M2,
-    IBD,
-    IBMR,
-    IPR)
-
-context_rda <- pente_context_scale %>% 
-  dplyr::select(code_station,
-                all_of(var_etude))
-```
-
-```{r}
-pente_rda <- pente_rda[order(pente_rda$code_station), ]
-context_rda <- context_rda[order(context_rda$code_station), ]
-
-#vérifier que l'ordre correspond
-all(pente_rda$code_station == context_rda$code_station)
-```
-### Modèle
-
-```{r}
-modele_rda_context <- rda(pente_rda[,-1] ~ ., data = context_rda[,-1])
-
-summary(modele_rda_context)
-coef(modele_rda_context)
-```
-
-22% de la variance expliquée par les variables environnementale
-
-
-
-```{r}
-plot(modele_rda_context)
-plot(modele_rda_context, display = "bp", scaling = 2)
-plot(modele_rda_context, display = "species", scaling = 2, arrows = 1)
-plot(modele_rda_context, display = c("species", "bp"), scaling = 2)
-scores(modele_rda_context)
-```
-
-
-```{r}
-RsquareAdj(modele_rda_context)
-```
-
-```{r}
-anova.cca(modele_rda_context)
-anova.cca(modele_rda_context, by="axis")
-anova.cca(modele_rda_context, by="terms")
-```
-
-### Vérifier multicolinéarité
-```{r}
-sqrt(vif.cca(modele_rda_context))
-```
-
-
-### Sélection des variables significatives
-ordiR2step() test toutes les combinaisons possible de nos variable pour garder le modele le plus robuste
-```{r}
-# modele nul
-mod0 <- rda(pente_rda[,-1]~ 1, data = context_rda[,-1])
-
-#modele complet avec toutes les variables à tester
-mod1 <- modele_rda_context
-
-#selection des variables possibles
-mod_sel <- ordiR2step(mod0,
-                      scope = formula(mod1),
-                      direction = "forward",
-                      permutations = 999)
-```
-Modèle final = pentes_LMM_large ~ temp_juillet
-
-### Tester le modèle retenu
-```{r}
-modele_rda_context2 <- rda(pente_rda[,-1] ~ reseaux +temp_juillet, data = context_rda[,-1])
-
-summary(modele_rda_context2)
-coef(modele_rda_context2)
-```
-
-```{r}
-RsquareAdj(modele_rda_context2)$adj.r.squared
-```
-
-```{r}
-anova.cca(modele_rda_context2, by = "axis")
-anova.cca(modele_rda_context2, by = "terms") 
-```
-
-
-
-### Clustering
-```{r}
-# Extraction des scores des stations sur les axes retenus
-scores_sites <- scores(
-  modele_rda_context,
-  display = "sites",
-  scaling = 2
-)
-
-# Garder uniquement RDA1 et RDA2
-scores_sites <- as.data.frame(scores_sites[, 1:2])
-
-# Ajouter les codes stations comme colonne
-scores_sites$station <- pente_rda[, 1]
-```
-
-```{r}
-nrow(scores_sites) == nrow(pente_rda)
-```
-
-```{r}
-dist_scores <- dist(scores_sites[, c("RDA1", "RDA2")])
-
-hc_rda <- hclust(dist_scores, method = "ward.D2")
-
-scores_sites$cluster <- factor(cutree(hc_rda, k = 3))
-```
-
-
-```{r}
-# Biplot RDA avec clusters
-plot(
-  modele_rda_context,
-  type = "n",
-  scaling = 2,
-  main = "RDA – groupes de stations (clustering exploratoire)"
-)
-
-points(
-  scores_sites$RDA1,
-  scores_sites$RDA2,
-  col = scores_sites$cluster,
-  pch = 19
-)
-
-
-text(
-  scores_sites$RDA1,
-  scores_sites$RDA2,
-  pos = 3,
-  cex = 0.7,
-  col = as.numeric(scores_sites$cluster)
-)
-
-text(
-  modele_rda_context,
-  display = "bp",
-  scaling = 2,
-  col = "brown",
-  cex = 0.9
-)
-
-legend(
-  "topright",
-  legend = paste("Cluster", levels(scores_sites$cluster)),
-  col = 1:length(levels(scores_sites$cluster)),
-  pch = 19,
-  title = "Groupes de stations",
-  bty = "n"
-)
-```
-
-
-
-
 
