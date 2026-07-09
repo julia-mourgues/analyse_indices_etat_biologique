@@ -68,7 +68,7 @@ source(here::here("R","fun_get_data_hydrobio.R"))
 ### Chargement des données
 
 ```{r}
-mes_stations_peche <- readRDS(here("Data/clean_data", "mes_stations_peche.rds")) #contient les 92 stations qui nous intéressent
+mes_stations_peche <- readRDS(here("Data/clean_data", "mes_stations_peche.rds"))   #contient les 92 stations qui nous intéressent
 ```
 
 ### Définition des paramètres nécessaires au fonctionnement des fonctions
@@ -91,7 +91,8 @@ annee_depart <- 2007
 ## 1. Télécharger les données des stations hydrobiologiques
 
 ```{r}
-stations_hydrobio <- telecharger_stations(code_departement, mes_stations_peche)
+stations_hydrobio <- telecharger_stations(code_departement, #départements étudiés
+                                          mes_stations_peche$Code.Station.SANDRE) #on sélectionne la variable contenant les codes des stations étudiées
 ```
 
 ## 2. Télécharger les indices des stations hydrobiologiques
@@ -101,9 +102,9 @@ A présent, nous allons accéder à la table "indices" pour récupérer les indi
 Le téléchargement à été fait en deux temps. Dans un premier temps les données relatives aux indices I2M2, IBD et IBMR ont été stockées dans le dataframe indices_hydrobio.
 
 ```{r}
-indices_hydrobio <- telecharger_indices(code_departement,
-                                        mes_stations_peche,
-                                        liste_indice = code_indice,
+indices_hydrobio <- telecharger_indices(code_departement, #départements étudiés
+                                        mes_stations_peche$Code.Station.SANDRE, #stations étudiées
+                                        liste_indice = code_indice, #indices étudiés
                                         annee_depart) %>%
   group_by(libelle_indice, annee, code_qualification)
 ```
@@ -114,9 +115,9 @@ indices_hydrobio <- telecharger_indices(code_departement,
 Le téléchargement prend du temps car il y a énormément de données. Il est important de bien choisir l'année de départ pour limiter le temps de téléchargement.
 
 ```{r}
-taxons_hydrobio <- telecharger_listes( code_departement, 
-                                       mes_stations_peche, 
-                                       code_eqb, 
+taxons_hydrobio <- telecharger_listes( code_departement, #départements étudiés
+                                       mes_stations_peche$Code.Station.SANDRE, #stations étudiées
+                                       code_eqb, #communautés biologiques étudiées
                                        annee_depart)
 ```
 

@@ -21,6 +21,12 @@ library(tidyverse)
 library(here)
 ```
 
+## Chargement des fonctions
+
+```{r}
+source(here::here("R","fun_compte_indices.R"))
+```
+
 ## Chargement des données
 
 ```{r}
@@ -124,7 +130,7 @@ stations_wide <- stations_wide %>%
   )
 
 
-#Créer de nouvelle svariables contenant la distance entre les coordonnées du point poisson et celles des points hydrobio pour chaque station.
+#Créer de nouvelles variables contenant la distance entre les coordonnées du point poisson et celles des points hydrobio pour chaque station.
 distances_pop <- stations_wide %>%
   mutate(
     dist_4_10 = map2_dbl(geom_4, geom_10, ~ round(as.numeric(st_distance(
@@ -158,16 +164,11 @@ selection_station_distance<- distances_filtrees$code_station
 
 # Sélection 2: en fonction du nombre d’occurrences - qualifications non définissable et correcte
 
-
 ```{r}
+#on voudra au moins 4 valeurs d'indices par série temporelle
 min_occurrence <- 4
 ```
 
-## Chargement des fonctions
-
-```{r}
-source(here::here("R","fun_compte_indices.R"))
-```
 
 ## Préparation des données
 
@@ -209,18 +210,20 @@ IPR_non_applicable <- c(
 )
 
 selection_stations_indef <- selection_stations_indef %>%
-  filter(!code_station %in% IPR_non_applicable)
+  filter(!code_station %in% IPR_non_applicable) #retirer les stations où IPR n'est pas applicable
 ```
 
 # Récupérer les listes de stations remplissant les critères
 
 ```{r}
-liste_stations_retenues<- selection_stations_indef$code_station
+#liste des codes des stations retenues
+liste_stations_retenues<- selection_stations_indef$code_station 
 
+#table avec les informations des stations retenues (libelle, coordonnées, département, bassin...)
 info_stations_etudiees <- BDD_info_stations %>% 
   filter(sta_code_sandre %in% liste_stations_retenues)
 
-#Sauvegarder la liste
+#Sauvegarder les données
 saveRDS(liste_stations_retenues, here("Data/clean_data", "liste_stations_retenues.rds"))
 saveRDS(IPR_non_applicable, here("Data/clean_data", "liste_sta_IPR_non_applicable.rds"))
 write.table(x = info_stations_etudiees, file = '../Output/stations_etude.csv', sep = ';', row.names = FALSE)

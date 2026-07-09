@@ -34,16 +34,16 @@ source(here::here("R","fun_typologie.R"))
 Au sein d'une même station, nous pouvons avoir plusieurs points de prélèvement car en fonction des conditions sur le terrain, il a pu être nécessaire de changer de zone de prélèvement. Ainsi dans notre liste de stations, nous pouvons avoir plusieurs points pour une station avec certains points qui sont notés comme inactifs. Afin d'avoir les données les plus récentes et un suivi plus complet, nous enlevons les stations inactives.
 
 ```{r chargement_donnees}
-stations_peche <- sf::read_sf(
+mes_stations_peche <- sf::read_sf(
   "\\\\ad.intra\\dfs\\COMMUNS\\REGIONS\\nor\\DR\\OFB\\SIG\\DR\\IG_METIER\\EAU\\PECHE\\Stations_reseaux.gpkg"
 ) %>%
-  dplyr::filter(Etat == "actif") %>%
-  dplyr::select(Code.Station.SANDRE = `Code Station SANDRE`,
+  dplyr::filter(Etat == "actif") %>% #sélection des stations actives
+  dplyr::select(Code.Station.SANDRE = `Code Station SANDRE`, #sélectionner et renommer les variables
                 code_sta_pp,
                 LIBELLE.SANDRE = `LIBELLE SANDRE`,
                 geom)
 
-#Cette base de données va nous permettre de récupérer les typologies
+#Cette base de données va nous permettre de récupérer les typologies des stations
 Base_station_active <- read_excel(
   "R:\\LaboHB\\UHBIO_Seulline\\4 - Référentiel station\\Base station active.xlsx",
   sheet = "Base active"
@@ -55,10 +55,6 @@ load(here("Data/start_data", "stations_strahler.Rdata")) #table contenant rang d
 ```
 
 
-```{r objets_stations}
-mes_stations_peche <- stations_peche$Code.Station.SANDRE
-mes_sta_pp <- stations_peche$code_sta_pp
-```
 
 # Récupérer les typologies des stations
 
@@ -67,17 +63,17 @@ Maintenant nous allons récupérer la typologie des stations. Cette donnée est 
 ```{r base_active}
 #Réarrangement des données
 #Il faut ajouter un "0" devant les codes stations du fichier pour les mettre au format code sandre
-Base_station_active$CD_STATION <- as.character(Base_station_active$CD_STATION)
 Base_station_active$CD_STATION <- str_pad(
-  Base_station_active$CD_STATION,
-  width = 8,
-  side = "left",
-  pad = "0"
+  as.character(Base_station_active$CD_STATION),
+  width = 8, #longueur du code attendue = 8 caractères
+  side = "left", #ajouter les caractères manquants à gauche
+  pad = "0" #le caractère ajoité est un 0
 )
 
 Base_station_active_clean <- Base_station_active %>%
-  filter(CD_STATION %in% mes_stations_peche) %>%
-  dplyr::select(
+  filter(CD_STATION %in% mes_stations_peche$Code.Station.SANDRE) %>% #filtrer la table sur les stations étudiées
+  #sélection des variables d'interet
+  dplyr::select( #sélection des variables d’intérêt
     CD_STATION,
     RESEAU,
     TYPE,
@@ -91,10 +87,14 @@ Base_station_active_clean <- Base_station_active %>%
   rename(Typologie = TYPE)
 ```
 
-
+Les codes typologie sont de la forme "M12-A". Ils sont constitués :
+* d'une lettre correspondant à la taille du cours d'eau, 
+* un nombre correspondant à l'hydroécorégion de niveau 1 (HER 1) 
+* une dernière lettre correspondant à l'hydroécorégion de niveau 2 (HER 2).
+Ici on va nettoyer les codes des typologies pour garder seulement l'HER 1
 ```{r typologies}
 # Jointure pour faire correspondre les typologies aux stations de pêche
-stations_typologie <- stations_peche %>%
+stations_typologie <- mes_stations_peche %>%
   left_join(Base_station_active_clean,
             by = c("Code.Station.SANDRE" = "CD_STATION")) %>%
   dplyr::select(
@@ -104,8 +104,8 @@ stations_typologie <- stations_peche %>%
     Typologie) %>%
   mutate( 
     Typologie_clean = sapply(Typologie, 
-                             nettoyage_code), #nettoyer les codes des typologies
-    libelle_typologie = sapply(Typologie_clean, #simplifier les typologies: "Tables calcaires" ou "Armoricain"
+                             nettoyage_code), #enlever le "-" et la / les lettre(s) qui suit(ent)
+    libelle_typologie = sapply(Typologie_clean, #simplifier les typologies en traduisant le nombre: "9"="Tables calcaires" et "12"="Armoricain"
                                traduire_code)
   )
 ```
@@ -124,9 +124,9 @@ context_stations <- stations_typologie %>%
 
 # Table contenant les métriques du paysage (diversité, fragmentation, equitabilité...)
 resultats_clc_indices_paysages2 <- resultats_clc_indices_paysages %>% 
-  filter(clc_type=="n2",
-         dist_buffer==2500) %>% 
-  pivot_wider(names_from="metric",
+  filter(clc_type=="n2", #on s'intéresse aux classes d'occupation du sol de niveau 2
+         dist_buffer==2500) %>% #un rayon de 2,5km autour de la station
+  pivot_wider(names_from="metric", #passer au format large
               values_from = "value")
 
 context_stations_2 <- context_stations %>% 
@@ -135,8 +135,8 @@ context_stations_2 <- context_stations %>%
 
 #Table contenant les proportions de types de paysages
 resultats_clc_stations2 <- resultats_clc_stations %>% 
-  filter(typologie=="n2",
-         distance_m==2500)
+  filter(typologie=="n2", #on s'intéresse aux classes d'occupation du sol de niveau 2
+         distance_m==2500)  #un rayon de 2,5km autour de la station
 
 #Jointure finale
 context_stations_3 <- context_stations_2 %>% 
@@ -150,8 +150,6 @@ context_stations_3 <- context_stations_2 %>%
 ```{r sauvegarde_tables}
 saveRDS(mes_stations_peche,
         here("Data/clean_data", "mes_stations_peche.rds"))
-saveRDS(mes_sta_pp, here("Data/clean_data", "mes_sta_pp.rds")) #nécessaire pour garder les points de prélèvement aspe actifs
-
 
 saveRDS(stations_typologie,
         here("Data/clean_data", "stations_typologie.rds"))

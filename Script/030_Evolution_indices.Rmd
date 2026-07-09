@@ -87,7 +87,6 @@ bornes_indices <- list(
 ## Graphiques
 
 ```{r}
-#Utilisation du package {purr} pour appliquer notre fonction à la liste de départements
 walk( liste_indices, 
       ~trend_indice( BDD_indices,
                      bornes_indices=bornes_indices,

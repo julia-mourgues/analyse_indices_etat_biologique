@@ -36,7 +36,7 @@ stations_typologie <- readRDS(here("Data/clean_data","stations_typologie.rds"))
 
 # Réarrangement des données
 
-## Récupérer coordonnées points de prélèvements de chaque élément biologique
+## Récupérer coordonnées des points de prélèvements de chaque élément biologique
 
 ```{r}
 base_stations_long <- Base_station_active %>%
@@ -76,28 +76,44 @@ hydrobio_stations_clean <- stations_hydrobio %>%
     -libelle_masse_eau,
     -geometry
   ) %>% 
+  #jointure pour récupérer les typologies de stations
   left_join(stations_typologie %>%  
               st_drop_geometry() %>% 
-              dplyr::select(code_sta_pp, Code.Station.SANDRE, Typologie, Typologie_clean, libelle_typologie),
+              dplyr::select(code_sta_pp, 
+                            Code.Station.SANDRE, 
+                            Typologie, 
+                            Typologie_clean, 
+                            libelle_typologie),
             by=c("code_station_hydrobio"="Code.Station.SANDRE"))
 ```
 
 ## 2.Données indices
-
+Ici on part des données d'indices recalculées avec le SEEE dnas le script 003.
 ```{r}
-indices_clean <- indices_SEEE %>% 
-  mutate( classe_indice_SEEE= case_when(
-    classe_indice_SEEE=="BON" ~"Bon",
-    classe_indice_SEEE=="MAUVAIS" ~"Mauvais",
-    classe_indice_SEEE=="MEDIOCRE" ~"Médiocre",
-    classe_indice_SEEE=="MOYEN" ~"Moyen",
-    classe_indice_SEEE=="TRES_BON" ~"Très bon",
-    TRUE ~ classe_indice_SEEE
-  )) %>% 
-  left_join(indices_hydrobio %>% 
-              ungroup() %>%
-              select(code_station_hydrobio, code_prelevement, annee, date_prelevement, code_indice, libelle_qualification), 
-            by=c("code_station_hydrobio", "annee", "code_indice"))
+indices_clean <- indices_SEEE %>%
+  mutate(
+    classe_indice_SEEE = case_when(
+      classe_indice_SEEE == "BON" ~ "Bon",
+      classe_indice_SEEE == "MAUVAIS" ~ "Mauvais",
+      classe_indice_SEEE == "MEDIOCRE" ~ "Médiocre",
+      classe_indice_SEEE == "MOYEN" ~ "Moyen",
+      classe_indice_SEEE == "TRES_BON" ~ "Très bon",
+      TRUE ~ classe_indice_SEEE
+    )
+  ) %>%
+  left_join(
+    indices_hydrobio %>%
+      ungroup() %>%
+      select(
+        code_station_hydrobio,
+        code_prelevement,
+        annee,
+        date_prelevement,
+        code_indice,
+        libelle_qualification
+      ),
+    by = c("code_station_hydrobio", "annee", "code_indice")
+  )
 ```
 
 
@@ -126,9 +142,9 @@ hydrobio_taxo <- taxons_hydrobio %>%
     largeur_moyenne_lame_eau,
     longueur_prospectee
   ) %>%
-  mutate(date_prelevement = as.Date(substr(date_prelevement, 1, 10))) %>%
-  filter(code_qualification %in% c("0","1")) %>% 
-  distinct()
+  mutate(date_prelevement = as.Date(substr(date_prelevement, 1, 10))) %>% #formater les dates
+  filter(code_qualification %in% c("0", "1")) %>% #sélectionner les données "correctes" et "qualification non définissable"
+  distinct() #supprimer les doublons
 ```
 
 
@@ -144,13 +160,13 @@ stations_indices <- left_join(
   by = 
     "code_station_hydrobio") %>%
   mutate(date_prelevement = ymd(date_prelevement),
-         code_support= case_when(
+         code_support= case_when( #ajouter le code des communautés biologiques
            code_indice=="2928"~"27",
            code_indice=="5856"~"10",
            code_indice=="7613"~"13",
            TRUE ~NA_character_
          ),
-         libelle_support= case_when(
+         libelle_support= case_when( #ajouter le libelle des communautés biologiques
            code_indice=="2928"~"Macrophytes",
            code_indice=="5856"~"Diatomées benthiques",
            code_indice=="7613"~"Macroinvertébrés aquatiques",
@@ -174,7 +190,7 @@ stations_indices2 <- left_join(
 
 ```{r}
 hydrobio_stations_indices <- stations_indices2 %>%
-  mutate(date_prelevement = ymd(date_prelevement)) %>% 
+  mutate(date_prelevement = ymd(date_prelevement)) %>% #formater les dates
   select(-bio) %>% 
   group_by(code_station_hydrobio, 
            code_support, 
@@ -185,7 +201,7 @@ hydrobio_stations_indices <- stations_indices2 %>%
 ```
 
 ## Récupérer les opérateurs des échantillonnages
-
+Nous n'avons pas accès à cette information via hub'eau, donc nous avons téléchargé les données via Naïades.
 ```{r}
 info_operation2<-info_operation %>% 
   select(CdStationMesureEauxSurface, 
@@ -193,13 +209,14 @@ info_operation2<-info_operation %>%
          DateDebutOperationPrelBio, 
          NomProducteur,
          NomPreleveur) %>% 
-  filter(CdStationMesureEauxSurface %in% mes_stations_peche) %>% 
+  filter(CdStationMesureEauxSurface %in% mes_stations_peche$Code.station.SANDRE) %>% 
   mutate(CdSupport=as.character(CdSupport),
          DateDebutOperationPrelBio=as.Date(DateDebutOperationPrelBio)) %>% 
   distinct()
 ```
 
 ```{r}
+#jointure pour ajouter les opérateurs à la table contenant les indices
 hydrobio_stations_indices <- hydrobio_stations_indices %>%
   left_join(info_operation2,
             by = c("code_station_hydrobio"="CdStationMesureEauxSurface", 
@@ -208,10 +225,9 @@ hydrobio_stations_indices <- hydrobio_stations_indices %>%
 ```
 
 
-
-## Associer les opérateurs en fonction du bassin et du code de l'indice
 Il nous manque les opérateurs de 2024 donc on les ajoute à la main.
 ```{r}
+#la règle pour associer les nomsdes opérateurs a été établie apres discussion avec Elise (Labo)
 hydrobio_stations_indices <- hydrobio_stations_indices %>%
   st_drop_geometry() %>%
   mutate(
@@ -234,7 +250,7 @@ hydrobio_stations_indices <- hydrobio_stations_indices %>%
 
 Ici le code "O4" correspond à l'agence de l'eau Loire Bretagne et "03" correspond à l'agence de l'eau Seine Normandie.
 
-## Simplifier l'écritures des facteurs des variables NomPreleveur et RESEAUX
+## Simplifier l'écritures des niveaux des variables NomPreleveur et RESEAUX
 
 A adapter si changement dans les données
 
@@ -249,7 +265,7 @@ hydrobio_stations_indices <- hydrobio_stations_indices %>%
       TRUE ~ NA_character_
     ),
     NomPreleveur= case_when (
-      str_detect(NomPreleveur,"OFB") ~ "OFB", #finalement on garde suelement deux niveaux pour la variable NomPreleveur afin de simplifier les analyses
+      str_detect(NomPreleveur,"OFB") ~ "OFB", #finalement on garde seulement deux niveaux pour la variable NomPreleveur afin de simplifier les analyses
       TRUE ~  "Prestataire"
     )
   )
@@ -295,12 +311,12 @@ hydrobio_taxo4 <- hydrobio_taxo3 %>%
       TRUE ~ code_support
     )
   )
-```
 
-```{r}
+#ajouter les préleveurs de 2024
 hydrobio_taxo_final <- hydrobio_taxo4 %>%
   st_drop_geometry() %>%
   mutate(
+    #Ici le code "O4" correspond à l'agence de l'eau Loire Bretagne et "03" correspond à l'agence de l'eau Seine Normandie.
     NomPreleveur = case_when(
       annee == 2024 & is.na(NomPreleveur) &
         str_starts(code_station_hydrobio, "04") &
@@ -318,7 +334,6 @@ hydrobio_taxo_final <- hydrobio_taxo4 %>%
   )
 ```
 
-Ici le code "O4" correspond à l'agence de l'eau Loire Bretagne et "03" correspond à l'agence de l'eau Seine Normandie.
 
 ## Simplifier l'écritures des facteurs des variables NomPreleveur et RESEAUX
 

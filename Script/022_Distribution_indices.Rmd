@@ -45,6 +45,7 @@ med_total <- BDD_indices %>%
   summarise(mediane = median(resultat_eqr, na.rm = TRUE),
             .groups = "drop")
 
+#compter le nombre de stations prise en compte pour chaque indice
 stations_par_indice_histo <- BDD_indices %>%
   group_by(libelle_indice) %>%
   summarise(n_stations = n_distinct(code_station), .groups = "drop")
@@ -56,13 +57,16 @@ stations_par_indice_histo <- BDD_indices %>%
 distrib_histo <- ggplot(BDD_indices,
                               aes(x = resultat_eqr, fill = libelle_indice)) +
   geom_histogram(show.legend = FALSE, color = "black") +
+  #ajouter une ligne pour la médiane
   geom_vline(
     data = med_total,
     aes(xintercept = mediane),
     color = "red",
     linewidth = 1
   ) +
+  #une facette par indice
   facet_wrap( ~ libelle_indice, scales = "free") +
+  #ajouter le nombre de stations prise en compte par indice
   geom_text(
     data = stations_par_indice_histo,
     aes(
@@ -99,6 +103,7 @@ ggsave(
 ## Préparation des données
 
 ```{r}
+#calculer la médiane des 4 indice par cycle DCE
 med_dce <- BDD_indices %>%
   drop_na(cycle_DCE)%>%
   group_by(libelle_indice, cycle_DCE) %>%
@@ -121,11 +126,6 @@ BDD_3_cycles <- BDD_indices %>%
             by = c("code_indice", "code_station")) 
 ```
 
-```{r}
-saveRDS(BDD_3_cycles, here("Data/clean_data","BDD_3_cycle_indices.rds"))
-```
-
-
 ## Graphique
 
 ```{r}
@@ -134,12 +134,13 @@ stations_par_indice <- BDD_3_cycles %>%
   group_by(libelle_indice, cycle_DCE) %>%
   summarise(n_stations = n_distinct(code_station), .groups = "drop")
 
+#définir le style de ligne pour les 3 cycles
 style <- c(1, 2, 3)
 
 distrib_densite <- ggplot(BDD_3_cycles, aes(x = resultat_eqr, fill = cycle_DCE)) +
   geom_density(color = "black", alpha = 0.8) +
   scale_fill_manual(values = c("#009E73FF", "#56B4E9FF", "#E69F00FF")) +
-  
+  #ajouter une ligne correspondant à la médiane de chaque cycle
   geom_vline(
     data = med_dce,
     aes(xintercept = mediane, linetype = cycle_DCE),
@@ -147,7 +148,7 @@ distrib_densite <- ggplot(BDD_3_cycles, aes(x = resultat_eqr, fill = cycle_DCE))
     linewidth = 1
   ) +
   scale_linetype_manual(values = style) +
-  
+  #ajouter le nombre de stations prises en compte
   geom_text(
     data = stations_par_indice,
     aes(
@@ -179,6 +180,7 @@ distrib_densite <- ggplot(BDD_3_cycles, aes(x = resultat_eqr, fill = cycle_DCE))
     legend.text = element_text(size = 8)
   )
 
+#Télécharger le graphiques
 ggsave(
   filename = "distrib_densite.png",
   plot = distrib_densite,
