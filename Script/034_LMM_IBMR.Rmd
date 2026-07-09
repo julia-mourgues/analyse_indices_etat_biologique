@@ -23,6 +23,7 @@ library(DHARMa)
 library(MuMIn)
 library(lmerTest)
 library(car)
+library(colorspace)
 ```
 
 ## Chargement des fonctions
@@ -44,18 +45,15 @@ BDD_IBMR <- BDD_indices %>%
 ```
 
 
-# Réseau RRP
+# 1. Réseau RRP
 
 ## Préparer les données
 ```{r}
 BDD_IBMR_RRP <- BDD_IBMR%>% 
   filter(reseaux=="RRP",
-         annee >=2013)%>% 
+         annee >=2013)%>% #le réseau RRP est étudié à partir de 2013
   group_by(code_station) %>%
-  mutate(annee_c = (annee - min(annee) + 1),
-         annee_min = min(annee),
-         julian=lubridate::yday(date_prelevement),
-         resultat_log=log(resultat_eqr+1)) 
+  mutate(annee_c = (annee - min(annee) + 1)) #centrer les années
 ```
 
 ## LMM sur les données brutes IBMR 
@@ -73,31 +71,6 @@ sim_brute_RRP <- simulateResiduals(M_brute_RRP)
 plot(sim_brute_RRP, main = "DHARMa - M_brute_RRP")
 ```
 
-### Vérifier l'indépendance des résidus
-```{r}
-par(mfrow = c(1, 3), mar = c(4, 4, 0.5, 0.5))
-
-plot(resid(M_brute_RRP) ~ BDD_IBMR_RRP$resultat_eqr,
-     xlab = "I2M2",
-     ylab = "Normalized residuals")
-abline(h = 0, lty = 2)
-
-boxplot(
-  resid(M_brute_RRP) ~ annee_c,
-  data = BDD_IBMR_RRP,
-  xlab = "Années",
-  ylab = "Normalized residuals"
-)
-abline(h = 0, lty = 2)
-
-boxplot(
-  resid(M_brute_RRP) ~ code_station,
-  data = BDD_IBMR_RRP,
-  xlab = "stations",
-  ylab = "Normalized residuals"
-)
-abline(h = 0, lty = 2)
-```
 
 ## Interprétation du modèle
 ```{r}
@@ -159,16 +132,14 @@ newdata_RRP$upper <- pred$fit + 1.96 * pred$se.fit
 ```
 
 
-# Réseau RCS
+# 2. Réseau RCS
 
 ## Préparer les données
 ```{r}
 BDD_IBMR_RCS <- BDD_IBMR%>% 
   filter(reseaux=="RCS") %>% 
   group_by(code_station) %>%
-  mutate(annee_c = (annee - min(annee) + 1),
-         annee_min = min(annee),
-         julian=lubridate::yday(date_prelevement))
+  mutate(annee_c = (annee - min(annee) + 1)) #centrer les années
 ```
 
 
@@ -232,24 +203,6 @@ plot(sim_brute_RCS_clean, main = "DHARMa - M_brute_RCS_clean")
 ```
 
 
-### Vérifier l'indépendance des résidus
-```{r}
-# Afin de vérifier l'indépendance des résidus du modèle,
-# nous devons tracer les résidus en fonction de chaque
-# covariable du modèle.
-par(mfrow = c(1, 3), mar = c(4, 4, 0.5, 0.5))
-
-plot(resid(M_brute_RCS_clean) ~ BDD_IBMR_RCS_clean$resultat_eqr, xlab = "I2M2", ylab = "Normalized residuals")
-abline(h = 0, lty = 2)
-
-boxplot(resid(M_brute_RCS_clean) ~ annee_c, data = BDD_IBMR_RCS_clean, xlab = "Années",
-    ylab = "Normalized residuals")
-abline(h = 0, lty = 2)
-
-boxplot(resid(M_brute_RCS_clean) ~ code_station, data = BDD_IBMR_RCS_clean, xlab = "stations", ylab = "Normalized residuals")
-abline(h = 0, lty = 2)
-```
-
 ## Interprétation du modèle
 
 ```{r}
@@ -310,10 +263,11 @@ newdata_RCS$upper <- pred$fit + 1.96 * pred$se.fit
 ```
 
 
-# Graphiques 
+# 3. Graphiques 
 
-## Tendances générales des deux réseaux
+## a. Tendances générales des deux réseaux
 ```{r}
+#définir les bornes des classes d'état biologique
 bornes_IBMR <- list(
   #bornes pour l'IBMR
   "2928"=list(
@@ -330,8 +284,8 @@ classes_generales_IBMR <- creation_classes(col_code= "2928",
 
 ```{r}
 Tendances_generales <- ggplot(BDD_IBMR, aes(x = annee, y = resultat_eqr)) +
+  #couleurs de fond correspondant aux classes d'état biologique
   ggplot2::geom_rect(
-    #couleurs de fond correspondant aux classes d'état biologique
     data = classes_generales_IBMR,
     ggplot2::aes(ymin = classe_borne_inf, ymax = classe_borne_sup, fill = classe_libelle),
     xmin = -Inf,
@@ -347,20 +301,20 @@ Tendances_generales <- ggplot(BDD_IBMR, aes(x = annee, y = resultat_eqr)) +
     ),
     guide = ggplot2::guide_legend(reverse = TRUE)
   ) +
+  #Points des valeurs brutes d'indices
   geom_point(
-    #Points des valeurs brutes d'indices
     colour = "black",
     size = 1,
     alpha = 0.1) +
+  #tendance du réseau RCS
   geom_line(
-    #tendance du réseau RCS
     data = newdata_RCS,
     aes(x = annee, y = fit, colour = "Tendance générale RCS"),
     linewidth = 1.3,
     inherit.aes = FALSE
   ) +
+  #limite basse de l'intervalle de confiance du réseau RCS
   geom_line(
-    #limite basse de l'intervalle de confiance du réseau RCS
     data = newdata_RCS,
     aes(x = annee, y = lower),
     linetype = "dotted",
@@ -369,8 +323,8 @@ Tendances_generales <- ggplot(BDD_IBMR, aes(x = annee, y = resultat_eqr)) +
     alpha = 1,
     inherit.aes = FALSE
   ) +
+  #limite haute de l'intervalle de confiance du réseau RCS
   geom_line(
-    #limite haute de l'intervalle de confiance du réseau RCS
     data = newdata_RCS,
     aes(x = annee, y = upper),
     linetype = "dotted",
@@ -379,15 +333,15 @@ Tendances_generales <- ggplot(BDD_IBMR, aes(x = annee, y = resultat_eqr)) +
     alpha = 1,
     inherit.aes = FALSE
   ) +
+  #tendance du réseau RRP
   geom_line(
-    #tendance du réseau RRP
     data = newdata_RRP,
     aes(x = annee, y = fit, colour = "Tendance générale RRP"),
     linewidth = 1,
     inherit.aes = FALSE
   ) +
+  #limite basse de l'intervalle de confiance du réseau RRP
   geom_line(
-    #limite basse de l'intervalle de confiance du réseau RRP
     data = newdata_RRP,
     aes(x = annee, y = lower),
     linetype = "dotted",
@@ -396,8 +350,8 @@ Tendances_generales <- ggplot(BDD_IBMR, aes(x = annee, y = resultat_eqr)) +
     alpha = 1,
     inherit.aes = FALSE
   ) +
+  #limite haute de l'intervalle de confiance du réseau RRP
   geom_line(
-    #limite haute de l'intervalle de confiance du réseau RRP
     data = newdata_RRP,
     aes(x = annee, y = upper),
     linetype = "dotted",
@@ -452,7 +406,7 @@ y = "IBMR"
     )
   )
 
-
+#Télécharger le graphique
 ggplot2::ggsave(
   filename = file.path(
     "../Output/1_Tendance_indice/03_LMM/IBMR/Tendances_generales_IBMR.jpg"
@@ -464,7 +418,7 @@ ggplot2::ggsave(
 ```
 
 
-## RRP
+## b. RRP
 ```{r}
 stations.coef_RRP <- coef(Modele_IBMR_RRP)$code_station
 stations.coef_RRP$code_station <- rownames(stations.coef_RRP)
@@ -474,6 +428,7 @@ stations.coef_RRP <- coef(Modele_IBMR_RRP)$code_station %>%
   tibble::rownames_to_column("code_station") %>%
   dplyr::rename(intercept_station = `(Intercept)`, pente_station = annee_c)
 
+#table qui va permettre de tracer les tendances des stations
 lines_by_station_RRP <- BDD_IBMR_RRP %>%
   dplyr::select(code_station,
                 code_sta_pp,
@@ -500,6 +455,7 @@ BDD_IBMR_RRP <- BDD_IBMR_RRP %>%
 lines_by_station_RRP <- lines_by_station_RRP %>%
   mutate(libelle_station = factor(libelle_station, levels = ordre_stations_RRP))
 
+#créer des labels pour les facettes avec le nom de la station + le numéro du département
 lab_facet_RRP <- BDD_IBMR_RRP %>%
   ungroup() %>%
   distinct(libelle_station, code_departement) %>%
@@ -508,8 +464,8 @@ lab_facet_RRP <- BDD_IBMR_RRP %>%
   tibble::deframe()
 ```
 
-###Graphique facetté par station
 ```{r}
+#définir les bornes des classes d'état biologique pour chaque station
 classes_IBMR <- valeurs_seuils %>%
   filter(indice=="IBMR") %>% 
   dplyr::rename(
@@ -526,7 +482,6 @@ classes_IBMR$classe_libelle <- factor(
   classes_IBMR$classe_libelle,
   levels = c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
 )
-
 ```
 
 ```{r}
@@ -539,8 +494,8 @@ largeur_plot_RRP <- n_col_RRP * 4
 
 #graphique
 Tendance_IBMR_RRP <- ggplot(BDD_IBMR_RRP, aes(x = annee, y = resultat_eqr)) +
+  #couleurs de fond correspondant aux classes d'état biologique
   geom_rect(
-    #couleurs de fond correspondant aux classes d'état biologique
     data = classes_IBMR,
     aes(ymin = classe_borne_inf, ymax = classe_borne_sup, fill = classe_libelle),
     xmin = -Inf,
@@ -553,8 +508,8 @@ Tendance_IBMR_RRP <- ggplot(BDD_IBMR_RRP, aes(x = annee, y = resultat_eqr)) +
     values = setNames(classes_IBMR$classe_couleur, classes_IBMR$classe_libelle),
     guide = guide_legend(reverse = TRUE)
   ) +
+  #limite basse de l'intervalle de confiance du réseau RRP
   geom_line(
-    #limite basse de l'intervalle de confiance du réseau RRP  
     data = newdata_RRP,
     aes(x = annee, y = lower),
     linetype = "dotted",
@@ -563,8 +518,8 @@ Tendance_IBMR_RRP <- ggplot(BDD_IBMR_RRP, aes(x = annee, y = resultat_eqr)) +
     alpha = 0.6,
     inherit.aes = FALSE
   ) +
+  #limite haute de l'intervalle de confiance du réseau RRP
   geom_line(
-    #limite haute de l'intervalle de confiance du réseau RRP
     data = newdata_RRP,
     aes(x = annee, y = upper),
     linetype = "dotted",
@@ -573,21 +528,21 @@ Tendance_IBMR_RRP <- ggplot(BDD_IBMR_RRP, aes(x = annee, y = resultat_eqr)) +
     alpha = 0.6,
     inherit.aes = FALSE
   ) +
+  #tendance du réseau RRP
   geom_line(
-    #tendance du réseau RRP
     data = newdata_RRP,
     aes(x = annee, y = fit, colour = "Tendance générale des stations RRP"),
     linewidth = 1,
     linetype = 2,
     inherit.aes = FALSE
   ) +
+  #données brutes de la station
   geom_point(
-    #données brutes de la station
     colour = "#990099FF",
     size = 2,
     alpha = 0.7) +
+  #Tendance de la station
   geom_line(
-    #Tendance de la station
     data = lines_by_station_RRP,
     aes(x = annee, y = fit, colour = "Tendance de la station"),
     linewidth = 1
@@ -660,6 +615,7 @@ y = "IBMR"
     )
   )
 
+#Télécharger les graphiques
 ggplot2::ggsave(
   filename = file.path(
     "../Output/1_Tendance_indice/03_LMM/IBMR/Tendance_IBMR_RRP.jpg"
@@ -671,7 +627,7 @@ ggplot2::ggsave(
 ```
 
 
-## RCS
+## c. RCS
 ```{r}
 stations.coef_RCS <- coef(Modele_IBMR_RCS)$code_station
 stations.coef_RCS$code_station <- rownames(stations.coef_RCS)
@@ -681,6 +637,7 @@ stations.coef_RCS <- coef(Modele_IBMR_RCS)$code_station %>%
   tibble::rownames_to_column("code_station") %>%
   dplyr::rename(intercept_station = `(Intercept)`, pente_station = annee_c)
 
+#Table permettant de tracer les tendances des stations
 lines_by_station_RCS <- BDD_IBMR_RCS_clean %>%
   dplyr::select(code_station,
                 code_sta_pp,
@@ -706,6 +663,7 @@ BDD_IBMR_RCS_clean <- BDD_IBMR_RCS_clean %>%
 lines_by_station_RCS <- lines_by_station_RCS %>%
   mutate(libelle_station = factor(libelle_station, levels = ordre_stations_RCS))
 
+#Créer les lebels des facettes
 lab_facet_RCS <- BDD_IBMR_RCS_clean %>%
   ungroup() %>% 
   distinct(libelle_station, code_departement) %>%
@@ -724,9 +682,10 @@ hauteur_plot_RCS <- n_lignes_RCS * 2.5
 largeur_plot_RCS <- n_col_RCS * 3
 
 #graphique
-Tendance_IBMR_RCS <- ggplot(BDD_IBMR_RCS_clean, aes(x = annee, y = resultat_eqr)) +
+Tendance_IBMR_RCS <- ggplot(BDD_IBMR_RCS_clean, 
+                            aes(x = annee, y = resultat_eqr)) +
+  #couleurs de fond correspondant aux classes d'état biologique
   geom_rect(
-    #couleurs de fond correspondant aux classes d'état biologique
     data = classes_IBMR,
     aes(ymin = classe_borne_inf, ymax = classe_borne_sup, fill = classe_libelle),
     xmin = -Inf,
@@ -739,8 +698,8 @@ Tendance_IBMR_RCS <- ggplot(BDD_IBMR_RCS_clean, aes(x = annee, y = resultat_eqr)
     values = setNames(classes_IBMR$classe_couleur, classes_IBMR$classe_libelle),
     guide = guide_legend(reverse = TRUE)
   ) +
+  #limite basse de l'intervalle de confiance du réseau RCS
   geom_line(
-    #limite basse de l'intervalle de confiance du réseau RCS
     data = newdata_RCS,
     aes(x = annee, y = lower),
     linetype = "dotted",
@@ -749,8 +708,8 @@ Tendance_IBMR_RCS <- ggplot(BDD_IBMR_RCS_clean, aes(x = annee, y = resultat_eqr)
     alpha = 0.6,
     inherit.aes = FALSE
   ) +
+  #limite haute de l'intervalle de confiance du réseau RCS
   geom_line(
-    #limite haute de l'intervalle de confiance du réseau RCS
     data = newdata_RCS,
     aes(x = annee, y = upper),
     linetype = "dotted",
@@ -759,22 +718,22 @@ Tendance_IBMR_RCS <- ggplot(BDD_IBMR_RCS_clean, aes(x = annee, y = resultat_eqr)
     alpha = 0.6,
     inherit.aes = FALSE
   ) +
+  #tendance du réseau RCS
   geom_line(
-    #tendance du réseau RCS
     data = newdata_RCS,
     aes(x = annee, y = fit, colour = "Tendance générale des station RCS"),
     linewidth = 1,
     linetype = 2,
     inherit.aes = FALSE
   ) +
+  #données brutes de la station
   geom_point(
-    #données brutes de la station
     colour = "#990099FF",
     size = 2.5,
     alpha = 0.7
   ) +
+  #Tendance de la station
   geom_line(
-    #Tendance de la station
     data = lines_by_station_RCS,
     aes(x = annee, y = fit, colour = "Tendance de la station"),
     linewidth = 1.3
@@ -842,6 +801,7 @@ y = "IBMR"
     )
   )
 
+#Télécharger les graphiques
 ggplot2::ggsave(
   filename = file.path(
     "../Output/1_Tendance_indice/03_LMM/IBMR/Tendance_IBMR_RCS.jpg"
