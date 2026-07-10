@@ -9,7 +9,7 @@ barplot_proportion <- function(data,
                                nb_min_station,
                                output_dir = "../Output/4_Proportions_classes_eco/01_Barplot") {
 
-    #Construire automatiquement le "titre réseau"
+  #Construire automatiquement le "titre réseau"
   reseau_titre <- paste(sort(unique(liste_reseaux)), collapse = "_")
   
   # S'assurer que le répertoire de sortie existe
@@ -52,7 +52,9 @@ barplot_proportion <- function(data,
   
   
   #graphique présentant le pourcentage de station dans chaque état biologique au cours du temps
-  g1 <- ggplot2::ggplot(data_pct, ggplot2::aes(x = annee, y = pct, fill = libelle_classe)) +
+  g1 <- ggplot2::ggplot(data_pct, ggplot2::aes(x = annee, 
+                                               y = pct, 
+                                               fill = libelle_classe)) +
     ggplot2::geom_col(position = "fill") +
     ggplot2::facet_wrap(~ libelle_indice, ncol = 4) +
     ggplot2::scale_y_continuous(labels = scales::percent_format()) +
@@ -83,7 +85,8 @@ barplot_proportion <- function(data,
         face = "bold",
         margin = margin(b = 5)
       ),
-      plot.subtitle = ggtext::element_textbox_simple(size = 12, margin = margin(b = 10)),
+      plot.subtitle = ggtext::element_textbox_simple(size = 12, 
+                                                     margin = margin(b = 10)),
       legend.title = ggplot2::element_text(size = 10, face = "bold")
     )
   
@@ -125,7 +128,9 @@ barplot_proportion <- function(data,
 #' @param liste_reseaux liste des réseaux étudiés
 
 
-barplot_nombre <- function(data, liste_reseaux, output_dir = "../Output/4_Proportions_classes_eco/01_Barplot") {
+barplot_nombre <- function(data, 
+                           liste_reseaux, 
+                           output_dir = "../Output/4_Proportions_classes_eco/01_Barplot") {
   #Construire automatiquement le "titre réseau"
   reseau_titre <- paste(sort(unique(liste_reseaux)), collapse = "_")
   
@@ -133,10 +138,12 @@ barplot_nombre <- function(data, liste_reseaux, output_dir = "../Output/4_Propor
   if (!dir.exists(output_dir))
     dir.create(output_dir, recursive = TRUE)
   
+  #filtrer les données
   data_filtre <- data %>%
     dplyr::ungroup() %>%
     dplyr::filter(.data$reseaux %in% liste_reseaux)
   
+  #filtrer les données avant 2013 si le réseau est RRP
   if (length(liste_reseaux) == 1 && liste_reseaux == "RRP") {
     data_filtre <- data_filtre %>%
       dplyr::filter(annee >= 2013)
@@ -159,7 +166,9 @@ barplot_nombre <- function(data, liste_reseaux, output_dir = "../Output/4_Propor
   palette_etat <- setNames(couleurs, classes)
   
   g3 <- ggplot2::ggplot(data_counts,
-                        ggplot2::aes(x = annee, y = n_classe, fill = libelle_classe)) +
+                        ggplot2::aes(x = annee, 
+                                     y = n_classe, 
+                                     fill = libelle_classe)) +
     ggplot2::geom_col(position = "stack") +
     ggplot2::facet_wrap(~ libelle_indice, ncol = 4) +
     scale_fill_manual(
@@ -183,13 +192,14 @@ barplot_nombre <- function(data, liste_reseaux, output_dir = "../Output/4_Propor
         face = "bold",
         margin = margin(b = 5)
       ),
-      plot.subtitle = ggtext::element_textbox_simple(size = 12, margin = margin(b = 10)),
+      plot.subtitle = ggtext::element_textbox_simple(size = 12, 
+                                                     margin = margin(b = 10)),
       legend.title = ggplot2::element_text(size = 12, face = "bold"),
       axis.title.x = ggplot2::element_text(size = 11),
       axis.title.y = ggplot2::element_text(size = 11)
     )
   
-  
+  #Télécharger la figure
   ggplot2::ggsave(
     filename = file.path(
       output_dir,

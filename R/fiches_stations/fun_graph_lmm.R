@@ -91,7 +91,8 @@ graph_lmm <- function(data_indice,
     ) +
     scale_fill_manual(
       name = "État biologique",
-      values = setNames(classes_filtre$classe_couleur, classes_filtre$classe_libelle),
+      values = setNames(classes_filtre$classe_couleur, 
+                        classes_filtre$classe_libelle),
       guide = guide_legend(reverse = TRUE)
     ) +
     #limite inférieure de l'intervalle de confiance associé à la tendance du réseau

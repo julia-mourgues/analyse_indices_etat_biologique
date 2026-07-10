@@ -1,5 +1,8 @@
-#' Créer les graphiques modélisant l'évolution des valeurs de chaque indice, avec ajout d'une droite de régression
+#' Créer les graphiques modélisant l'évolution des valeurs de chaque indice, 
+#' avec ajout d'une droite de régression
 
+
+#borne des classes d'état biologique ^pour chaque indice
 bornes_indices <- list(
   #bornes pour l'I2M2
   "7613" = list( 
@@ -30,6 +33,7 @@ bornes_indices <- list(
     classe_libelle = c("Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
   )
 )
+
 #' @param data dataframe contenant les résultats
 #' @param code_indice_val code de l'indice que l'on veut représenter
 #' @param bornes_indices  listes contenant les bornes inférieures et supérieures des classes de chaque indice

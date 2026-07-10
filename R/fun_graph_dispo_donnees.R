@@ -12,6 +12,7 @@ dispo_indices <- function(data_aspe,
                           nom_fichier,
                           col_libelle_qualification,
                           repertoire = ".") {
+  #filtrer les données
   data_aspe_filtre <- data_aspe %>%
     dplyr::ungroup() %>%
     dplyr::filter(.data$dept == departement) %>%
@@ -40,7 +41,8 @@ dispo_indices <- function(data_aspe,
       ymax = y_num - 0.5 + rang / n
     )
   
-  p <- ggplot2::ggplot(data_split, aes(x = annee, y = as.character(sta_libelle_sandre))) +
+  p <- ggplot2::ggplot(data_split, aes(x = annee, 
+                                       y = as.character(sta_libelle_sandre))) +
     
     ggplot2::geom_rect(aes(
       xmin = xmin,
@@ -63,6 +65,7 @@ dispo_indices <- function(data_aspe,
         "RCS" = "#CD6839",
         "RHP"="#009E73FF"
       ))+
+    #ajout des symbole traduisant les indices disponibles par année et station
     ggplot2::geom_point(
       data = data_hydrobio_filtre,
       aes(
@@ -76,10 +79,8 @@ dispo_indices <- function(data_aspe,
     ) +
     ggplot2::scale_shape_manual(
       values = c(
-        "IBD" = 1,
-        # cercle
-        "IBMR" = 3,
-        # plus
+        "IBD" = 1,# cercle
+        "IBMR" = 3,# plus
         "I2M2" = 4 # croix
       )) + 
     ggplot2::scale_color_manual(values = c(
@@ -120,7 +121,10 @@ dispo_indices <- function(data_aspe,
   
   # Construction du chemin complet
   fichier_dispo <- file.path(repertoire,
-                             paste0("dispo_donnees_", nom_fichier, "_", departement, ".jpg"))
+                             paste0("dispo_donnees_", 
+                                    nom_fichier, "_", 
+                                    departement, 
+                                    ".jpg"))
   
   # --- Sauvegarde automatique en JPG ---
   ggplot2::ggsave(

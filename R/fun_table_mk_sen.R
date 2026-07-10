@@ -7,11 +7,11 @@ table_pentes_globales <- function (data, periode_etudiee) {
   data_filtre <- data %>%
     dplyr::select(-nb_annees, -annee_max, -annee_min) %>%
     dplyr::mutate(
-      sens_slope_corrige = dplyr::if_else(
-        libelle_indice == "IPR",
-        -sens_slope,
-        sens_slope
-      ),
+      #inverser les tendances de l'IPR
+      sens_slope_corrige = dplyr::if_else(libelle_indice == "IPR", 
+                                          -sens_slope, 
+                                          sens_slope),
+      #créer une variable avec la direction de la tendance
       tendance = dplyr::case_when(
         mk_pvalue < 0.05 & sens_slope_corrige > 0 ~ "Tendance positive",
         mk_pvalue < 0.05 &
@@ -27,7 +27,11 @@ table_pentes_globales <- function (data, periode_etudiee) {
     gt::gt() %>%
     gt::tab_header(
       title = "Résultats des tests Mann-Kendall et pente de Sen",
-      subtitle = paste0("Analyse des indices d'état écologiques (", periode_etudiee, ")")
+      subtitle = paste0(
+        "Analyse des indices d'état écologiques (",
+        periode_etudiee,
+        ")"
+      )
     ) %>%
     gt::cols_label(
       libelle_indice = "Indice",
@@ -58,11 +62,7 @@ table_pentes_stations <- function (data, periode_etudiee) {
   #Préparation des données
   data_filtre <- data %>%
     dplyr::mutate(
-      sens_slope_corrige = dplyr::if_else(
-        libelle_indice == "IPR",
-        -sens_slope,
-        sens_slope
-      ),
+      sens_slope_corrige = dplyr::if_else(libelle_indice == "IPR", -sens_slope, sens_slope),
       signif = dplyr::case_when(
         mk_pvalue < 0.001 ~ "***",
         mk_pvalue < 0.01  ~ "**",
@@ -146,11 +146,7 @@ table_tendances_stations <- function (data, periode_etudiee) {
   #Préparation des données
   data_filtre <- data %>%
     dplyr::mutate(
-      sens_slope_corrige = dplyr::if_else(
-        libelle_indice == "IPR",
-        -sens_slope,
-        sens_slope
-      ),
+      sens_slope_corrige = dplyr::if_else(libelle_indice == "IPR", -sens_slope, sens_slope),
       signif = dplyr::case_when(
         mk_pvalue < 0.001 ~ "***",
         mk_pvalue < 0.01  ~ "**",
@@ -166,12 +162,17 @@ table_tendances_stations <- function (data, periode_etudiee) {
     dplyr::mutate(
       type_tendance = dplyr::if_else(sens_slope_corrige > 0, "Amélioration", "Déterioration"),
       fleche_sig = dplyr::case_when(
-        signif == "" & type_tendance == "Amélioration" ~ "<span style='color:rgba(128,128,128,0.35);font-size:18px'>&#x25B2;</span>",
-        signif == "" & type_tendance == "Déterioration" ~ "<span style='color:rgba(128,128,128,0.35);font-size:18px'>&#x25BC;</span>",
-        signif != "" & type_tendance == "Amélioration" ~ "<span style='color:green;font-size:18px'>&#x25B2;</span>",
-        signif != "" & type_tendance == "Déterioration" ~ "<span style='color:red;font-size:18px'>&#x25BC;</span>"
-      ))
-    
+        signif == "" &
+          type_tendance == "Amélioration" ~ "<span style='color:rgba(128,128,128,0.35);font-size:18px'>&#x25B2;</span>",
+        signif == "" &
+          type_tendance == "Déterioration" ~ "<span style='color:rgba(128,128,128,0.35);font-size:18px'>&#x25BC;</span>",
+        signif != "" &
+          type_tendance == "Amélioration" ~ "<span style='color:green;font-size:18px'>&#x25B2;</span>",
+        signif != "" &
+          type_tendance == "Déterioration" ~ "<span style='color:red;font-size:18px'>&#x25BC;</span>"
+      )
+    )
+  
   
   #Pivoter au format large
   data_tendance_large <- data_tendance %>%
@@ -202,7 +203,7 @@ table_tendances_stations <- function (data, periode_etudiee) {
       title = gt::md("**Tendances des indices pour chaque station.**"),
       subtitle = gt::md(
         paste0(
-          "Flèche de tendance (triangle vert = **Amélioration** ; triangle rouge = **Dégradation**; triangle gris = Tendance non significative). 
+          "Flèche de tendance (triangle vert = **Amélioration** ; triangle rouge = **Dégradation**; triangle gris = Tendance non significative).
           Période étudiée: ",
           periode_etudiee,
           "."
@@ -229,7 +230,6 @@ table_tendances_metriques_stations <- function(data,
                                                metriques,
                                                label_group,
                                                nom_fichier) {
-  
   # --- Préparation des données ---
   data_filtre <- data %>%
     dplyr::mutate(
@@ -247,15 +247,26 @@ table_tendances_metriques_stations <- function(data,
     dplyr::mutate(
       type_tendance = if_else(sens_slope > 0, "Amélioration", "Déterioration"),
       fleche_sig = case_when(
-        signif == "" & type_tendance == "Amélioration" ~ "<span style='color:rgba(128,128,128,0.35);font-size:18px'>&#x25B2;</span>",
-        signif == "" & type_tendance == "Déterioration" ~ "<span style='color:rgba(128,128,128,0.35);font-size:18px'>&#x25BC;</span>",
-        signif != "" & type_tendance == "Amélioration" ~ "<span style='color:green;font-size:18px'>&#x25B2;</span>",
-        signif != "" & type_tendance == "Déterioration" ~ "<span style='color:red;font-size:18px'>&#x25BC;</span>"
+        signif == "" &
+          type_tendance == "Amélioration" ~ "<span style='color:rgba(128,128,128,0.35);font-size:18px'>&#x25B2;</span>",
+        signif == "" &
+          type_tendance == "Déterioration" ~ "<span style='color:rgba(128,128,128,0.35);font-size:18px'>&#x25BC;</span>",
+        signif != "" &
+          type_tendance == "Amélioration" ~ "<span style='color:green;font-size:18px'>&#x25B2;</span>",
+        signif != "" &
+          type_tendance == "Déterioration" ~ "<span style='color:red;font-size:18px'>&#x25BC;</span>"
       )
     )
   
   data_tendance_large <- data_tendance %>%
-    select(code_departement, libelle_station, reseaux, libelle_support,libelle_metrique, fleche_sig) %>%
+    select(
+      code_departement,
+      libelle_station,
+      reseaux,
+      libelle_support,
+      libelle_metrique,
+      fleche_sig
+    ) %>%
     tidyr::pivot_wider(names_from = libelle_support, values_from = fleche_sig)
   
   tendance_clean <- data_tendance_large %>%
@@ -266,12 +277,12 @@ table_tendances_metriques_stations <- function(data,
   
   # --- Construction du tableau ---
   table_tendance_all <- tendance_clean %>%
-    select(code_departement, libelle_station, reseaux, all_of(cols_fleche_clean)) %>%
+    select(code_departement,
+           libelle_station,
+           reseaux,
+           all_of(cols_fleche_clean)) %>%
     gt::gt() %>%
-    tab_spanner(
-      label = label_group,
-      columns = c(all_of(metriques))
-    ) %>% 
+    tab_spanner(label = label_group, columns = c(all_of(metriques))) %>%
     gt::tab_options(table.font.size = px(11)) %>%
     gt::cols_label(
       code_departement = "Département",
@@ -282,19 +293,15 @@ table_tendances_metriques_stations <- function(data,
       title = gt::md("**Tendances des métriques pour chaque station.**"),
       subtitle = gt::md(
         paste0(
-          "Flèche de tendance (triangle vert = **Amélioration** ; triangle rouge = **Dégradation** ; triangle gris = Tendance non significative).  
-          Période étudiée : ", periode_etudiee, "."
+          "Flèche de tendance (triangle vert = **Amélioration** ; triangle rouge = **Dégradation** ; triangle gris = Tendance non significative).
+          Période étudiée : ",
+          periode_etudiee,
+          "."
         )
       )
     ) %>%
     gt::fmt_markdown(columns = all_of(cols_fleche_clean))
   
   # --- Export PDF ---
-  gt::gtsave(
-    table_tendance_all,
-    filename = nom_fichier
-  )
+  gt::gtsave(table_tendance_all, filename = nom_fichier)
 }
-
-
-

@@ -17,11 +17,12 @@ diag_alluvial <- function (data,
   # S'assurer que le répertoire de sortie existe
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
   
-  
+  #filtrer les données
   data_filtre <- data %>% 
     dplyr::filter(.data$reseaux %in% liste_reseaux) %>% 
     dplyr::arrange(code_station, annee)
   
+  #si le réseau est RRP, on prend en compte seulement les données à partir de 2013
   if (length(liste_reseaux) == 1 && liste_reseaux == "RRP" ) {
     data_filtre <- data_filtre %>%
       dplyr::filter(annee>=2013)
@@ -31,6 +32,7 @@ diag_alluvial <- function (data,
   #Extraire les indices
   all_indices <- unique(data_filtre$libelle_indice) #extraire les indices
   
+  #boucle qui va permettre de générer le graphique pour chaque indice présent dans les données
   for (idx in all_indices) {
     dl <- dplyr::filter(data_filtre, .data$libelle_indice == !!idx)
 
@@ -70,6 +72,7 @@ diag_alluvial <- function (data,
     data_lodes$annee <- base::factor(data_lodes$annee, 
                                      levels = years_kept)
     
+    #déterminer l'ordre des niveaux du facteur "etat"
     data_lodes$etat <- factor(
       data_lodes$etat,
       levels = c("Très bon", "Bon", "Moyen", "Médiocre","Mauvais" , "Non évalué"),
@@ -92,6 +95,7 @@ diag_alluvial <- function (data,
     classes   = c("Non évalué","Mauvais", "Médiocre", "Moyen", "Bon", "Très bon")
     palette_etat <- stats::setNames(couleurs, classes)
     
+    #ajuster l'axe y
     max_stations <- length(unique(data_lodes$code_station))
     limite_y <- ceiling(max_stations / 10) * 10
  
@@ -101,7 +105,7 @@ diag_alluvial <- function (data,
       ggplot2::aes(
         x        = annee,
         stratum  = etat,
-        alluvium = code_station,
+        alluvium = code_station, #visualiser le flux de stations entre les classes d'état
         y        = 1,             # chaque station contribue de façon égale
         fill     = etat
       )
@@ -116,7 +120,7 @@ diag_alluvial <- function (data,
           "Moyen"       = 0.6,
           "Médiocre"    = 0.6,
           "Mauvais"     = 0.6,
-          "Non évalué"  = 0.15   # très léger
+          "Non évalué"  = 0.15   
         ),
         guide = "none"
       ) +
