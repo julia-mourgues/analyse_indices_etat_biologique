@@ -1,0 +1,9 @@
+---
+title: "Informations de session R"
+output: html_document
+---
+
+```{r}
+utils::sessionInfo()
+```
+
