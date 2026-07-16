@@ -5,11 +5,12 @@
 *.pdf
 *.png
 *.jpg
-*.RData
+*.RData*
 *.rda
 *.rds
 *.csv
 *.xlsx
+*.docx
 
 
 Data/raw_data/
