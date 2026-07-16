@@ -1,0 +1,453 @@
+---
+title: "Dictionnaire"
+output: 
+  html_document:
+    highlight: pygments
+    theme: default
+    toc: true    
+    toc_float: true    
+    toc_depth: 3
+    css: Script/css/ofb_theme_html.css
+---
+
+```{r Logo, echo = FALSE}
+htmltools::img(
+  src = knitr::image_uri(here::here("Script/css", "logo_OFB_v2.png")),
+  alt = 'logo',
+  style = 'position:absolute; top:0; right:0; padding:10px; width:180px;'
+)
+```
+
+<br>
+
+Présentation des tables créées et utilisées pour l'analyse des tendances spatio-temporelles des indices d'état biologiques des cours d'eau normands.
+
+```{r chargement_packages, message=FALSE, warning=FALSE, echo = FALSE }
+library(here)
+library(tidyverse)
+library(sf)
+```
+
+# 1. Contenu du fichier "BDD_etude.rda"
+
+Le fichier BDD_etude.rda contient 5 tables, construites à partir des données ASPE et Naïades, et qui rassemblent l'ensemble des données nécessaires pour réaliser les analyses. <br>
+Il a été créé dans le script **"020_BDD_commune"**.
+
+```{r chargement_BDD_etude, message=TRUE, warning=FALSE, echo = TRUE}
+BDD_etude<- load(here("Data/clean_data", "BDD_etude.rda"))
+```
+
+```{r affichage_BDD_etude, message=FALSE, warning=FALSE, echo = FALSE}
+knitr::kable(data.frame('Tables' = BDD_etude))
+```
+
+
+## a. Table "BDD_info_stations"
+
+Cette table contient les informations relatives à la station et qui vont permettre de présenter le contexte de la station dans la fiche station.
+```{r affichage_BDD_info_stations, message=TRUE, warning=FALSE, echo = TRUE}
+#afficher les 2 premieres lignes de la table
+DT::datatable(
+  head(BDD_info_stations, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+#afficher le type de variables
+str(BDD_info_stations)
+```
+
+**Dictionnaire des variables:** <br>
+- **dept**= numéro du département <br>
+- **sta_code_sandre** = code sandre de la station <br>
+- **code_sta_pp** = code du point de prélèvement <br>
+- **sta_libelle_sandre** = libelle de la station <br>
+- **sta_coordonnees_x** et **sta_coordonnees_y** = coordonnées x et y en Lambert 93 <br>
+- **obj_libelle** = réseau d'appartenance de la station <br>
+- **bas_libelle_sandre** = libelle de bassin hydrographique dans lequel se situe la station <br>
+- **Typologie** = Code de l'hydroécorégion de type 2 à laquelle appartient la station <br>
+- **Typologie_clean** = Code de l'hydroécorégion de type 1 à laquelle appartient la station <br>
+- **libelle_typologie** = libelle de l'hydroécorégion à laquelle appartient la station <br>
+- **code_cours_eau** = code sandre du cours d'eau <br>
+- **libelle_cours_eau** = libelle du cours d'eau <br>
+- **code_commune** = code postal de la commune <br>
+- **libelle_commune** = libelle de la commune <br>
+- **libelle_departement** = libelle du département <br>
+- **libelle_region** = libelle de la région <br>
+
+
+## b. Table "BDD_indices"
+```{r affichage_BDD_indices, message=TRUE, warning=FALSE, echo = TRUE}
+#afficher les 2 premieres lignes de la table
+DT::datatable(
+  head(BDD_indices, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+#afficher le type de variables
+str(BDD_indices)
+```
+
+
+**Dictionnaire des variables:** <br>
+- **code_station**= code sandre de la station <br>
+- **libelle_station** = libelle sandre de la station <br>
+- **coordonnees_x** et **coordonnees_y** =  coordonnées x et y en Lambert 93 <br>
+- **libelle_bassin** = libelle de bassin hydrographique dans lequel se situe la station <br>
+- **code_commune** = code postal de la commune <br>
+- **libelle_commune** = libelle de la commune <br>
+- **code_departement**= numéro du département <br>
+- **libelle_departement** = libelle du département <br>
+- **code_region** = code de la région <br>
+- **libelle_region** = libelle de la région <br>
+- **code_sta_pp** = code du point de prélèvement <br>
+- **Typologie** = Code de l'hydroécorégion de type 2 à laquelle appartient la station <br>
+- **Typologie_clean** = Code de l'hydroécorégion de type 1 à laquelle appartient la station <br>
+- **libelle_typologie** = libelle de l'hydroécorégion à laquelle appartient la station <br>
+- **annee** = Année <br>
+- **code_indice** = code SANDRE de l'indice biologique, 5856 = IBD, 7036 = IPR, 2928 = IBMR, 7613 = I2M2 <br>
+- **libelle_indice** = libelle de l'indice biologique <br>
+- **resultat_indice"** = résultat brute de l'indice <br>
+- **resultat_eqr** = résultat normalisé de l'indice (en fonction de la typologie de la station), ces résultats ont été recalculés avec les algorithmes du SEEE pour l'IBMR et l'IBD. EQR = "Ecological Quality Ratio" <br>
+- **libelle_classe** =  classe d'état biologique associée à la valeur de l'EQR <br>
+- **code_prelevement** = identifiant du prélèvement <br>
+- **date_prelevement** = date du prélèvement <br>
+- **code_qualification** = code qualité de la donnée, 1= donnée "correcte", 0="qualité non définissable" <br> 
+- **libelle_qualification** = qualité de la donnée<br>
+- **code_support** = code du support biologique étudié, 4 = poissons, 10 = diatomées, 13 = Macroinvertébrés benthiques, 27 = macrophytes <br>
+- **libelle_support**=  libelle du support biologique étudié <br>
+- **reseaux** = appartenance réseau de la station <br>
+- **coord_point_x** et **coord_point_y** coordonnées du point de prélèvement <br>
+- **operateur** = organisme qui a effectué l'opération <br>
+- **cycle_DCE** = cycle DCE au cours duquel l'opération a eu lieu <br>
+
+
+
+## c. Table "BDD_metriques"
+```{r affichage_BDD_metriques, message=TRUE, warning=FALSE, echo = TRUE}
+#afficher les 2 premieres lignes de la table
+DT::datatable(
+  head(BDD_metriques, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+#afficher le type de variables
+str(BDD_metriques)
+```
+
+**Dictionnaire des variables:** <br>
+- **code_station**= code sandre de la station <br>
+- **code_sta_pp** = code du point de prélèvement <br>
+- **libelle_station** = libelle sandre de la station <br>
+- **code_departement**= numéro du département <br>
+- **reseaux** = appartenance réseau de la station <br>
+- **code_prelevement** = identifiant du prélèvement <br>
+- **date_prelevement** = date du prélèvement <br>
+- **annee** = Année <br>
+- **code_support** = code du support biologique étudié, 4 = poissons, 10 = diatomées, 13 = Macroinvertébrés benthiques, 27 = macrophytes <br>
+- **libelle_support**=  libelle du support biologique étudié <br>
+- **code_indice** = code SANDRE de l'indice biologique, 5856 = IBD, 7036 = IPR, 2928 = IBMR, 7613 = I2M2 <br>
+- **libelle_indice** = libelle de l'indice biologique <br>
+- **Typologie** = Code de l'hydroécorégion de type 2 à laquelle appartient la station <br>
+- **Typologie_clean** = Code de l'hydroécorégion de type 1 à laquelle appartient la station <br>
+- **libelle_typologie** = libelle de l'hydroécorégion à laquelle appartient la station <br>
+- **libelle_metrique** = libelle de la métrique, on a au minimum pour chaque indice : Abondance totale, richesse spécifique, diversité de Shannon, Equitabilité de Piélou. Pour certains indices on a aussi les métriques constitutives (ex pour l'IPR on a les valeurs des 7 métriques constitutives) <br>
+- **resultat_metrique**= résultat de la métrique <br>
+
+
+## d. Table "BDD_taxo_final"
+```{r affichage_BDD_taxo_final, message=TRUE, warning=FALSE, echo = TRUE}
+#afficher les 2 premieres lignes de la table
+DT::datatable(
+  head(BDD_taxo_final, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+#afficher le type de variables
+str(BDD_taxo_final)
+```
+
+**Dictionnaire des variables:** <br>
+- **code_station**= code sandre de la station <br>
+- **code_sta_pp** = code du point de prélèvement <br>
+- **libelle_station** = libelle sandre de la station <br>
+- **code_departement**= numéro du département <br>
+- **reseaux** = appartenance réseau de la station <br>
+- **code_prelevement** = identifiant du prélèvement <br>
+- **date_prelevement** = date du prélèvement <br>
+- **annee** = Année <br>
+- **code_support** = code du support biologique étudié, 4 = poissons, 10 = diatomées, 13 = Macroinvertébrés benthiques, 27 = macrophytes <br>
+- **libelle_support**=  libelle du support biologique étudié <br>
+- **code_indice** = code SANDRE de l'indice biologique, 5856 = IBD, 7036 = IPR, 2928 = IBMR, 7613 = I2M2 <br>
+- **libelle_indice** = libelle de l'indice biologique <br>
+- **Typologie** = Code de l'hydroécorégion de type 2 à laquelle appartient la station <br>
+- **Typologie_clean** = Code de l'hydroécorégion de type 1 à laquelle appartient la station <br>
+- **libelle_typologie** = libelle de l'hydroécorégion à laquelle appartient la station <br>
+- **code_taxon_lettre** = code alphabétique du taxon, pour poissons, diatomées et macrophytes <br>
+- **libelle_taxon** = nom de l'espèce <br>
+- **ope_surface_calculee_peche** = surface échantillonnée lors des opérations de pêche scientifique à l'électricité <br>
+- **type_peche** = type de protocole de pêche, on distingue les pêche par passages, pêche par point, pêche par ambiance etc.. <br>
+- **numéro_passage_peche** = numéro du passage au cours duquel le poisson a été prélevé, lorsque le type de peche est "passage" <br>
+- **type_resultat** = type de résultat : "NbrTax" = nombre d'individus; "RecTax" = Pourcentage de recouvrement du taxon (pour les macrophytes) <br>
+- **operateur** = organisme qui a effectué l'opération <br>
+- **resultat_taxon** = resultat taxon, il s'agit soit d'une abondance, soit d'un pourcentage de recouvrement <br>
+- **code_taxon_sandre** = code numérique du taxon <br>
+- **libelle_qualification** = qualité de la donnée<br>
+- **code_lot** = type de lot contenant l'individu, ne concerne que **les macroinvertébrés** <br>
+- **CSi** = cote spécifique d'oligotrophie, concerne seulement les **macrophytes**<br>
+- **Ei** = Coefficient de sténoécie, concerne seulement **les macrophytes**<br>
+- **Ki** = Coefficient d'abondance, concerne seulement **les macrophytes**<br>
+- **Val.Ind** = Valeur indicatrice du taxon, concerne seulement **les diatomées**<br>
+
+
+
+## e. Table "context_stations_complet"
+
+Cette table rassemble le contexte spatial de chaque station, avec des variables contextuelles (altitude, température de juillet, typologie...) et des variables paysagères (occuaption du sol et diversité paysagère). 
+
+```{r affichage_context_envt, message=TRUE, warning=FALSE, echo = TRUE}
+#afficher les 2 premieres lignes de la table
+DT::datatable(
+  head(context_stations_complet, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+#afficher le type de variables
+str(context_stations_complet)
+```
+
+**Dictionnaire des variables:** <br>
+- **sta_code_sandre** = code sandre de la station <br>
+- **code_sta_pp** = code du point de prélèvement <br>
+- **sta_libelle_sandre** = libelle de la station <br>
+- **dept**= numéro du département <br>
+- **sta_coordonnees_x** et **sta_coordonnees_y** = coordonnées x et y en Lambert 93 <br>
+- **geom** = objet géométrique permettant d'utiliser les données pour du SIG <br>
+- **Typologie** = Code de l'hydroécorégion de type 2 à laquelle appartient la station <br>
+- **Typologie_clean** = Code de l'hydroécorégion de type 1 à laquelle appartient la station <br>
+- **libelle_typologie** = libelle de l'hydroécorégion à laquelle appartient la station <br>
+- **GIGE_sthr** = rang de strahler du cours d'eau <br>
+- **LARGEUR** = facteur renseignant sur la largeur du cours d'eau <br>
+- **clc_type** = niveau de la nommenclature du Corine Land Cover, il existe 3 niveaux <br>
+- **dist_buffer** = rayon du tampon tracé autour de la station pour calculer les métriques paysagères <br>
+- **level** = niveau considéré lors du calcul des métriques paysagères <br>
+- **cohesion**
+- **edge_density** = indice de densité de bordure, mesure la fragmentation du paysage <br>
+- **nb_patches** = nombre de patches d'occupation de sol <br>
+- **shannon_div** = diversité paysagère de Shannon, calculé en fonction du nombre de catégories et leur proportion <br>
+- **shannon_eve** = équitabilité de Shannon, traduit la répartition équitable ou non des différentes classes d'occupation du sol dans le tampon <br>
+- **categorie** = Classe d'occupation du sol (culture, prairies agricoles, forets...) <br>
+- **surface_ha** = surface de la classe d'occupation du sol (hectare) <br>
+- **pct** = pourcentage de la surface de la classe d'occupation du sol par rapport à la surface totale du tampon (%) <br>
+- **distance_mer** = distance à la mer (km) <br>
+- **altitude** = altitude de la station (m) <br>
+- **surface_bv** = surface du bassin versant (km²) <br>
+- **distance_source** = distance à la source du cours d’eau (km) <br>
+- **pente** = pente du lit du cours d'eau (‰) <br>
+- **temp_juillet** = Température moyenne en juillet (°C) <br>
+- **temp_janvier** = Température moyenne en janvier (°C) <br>
+
+
+# 2. Contenu du fichier "results_LMM.rda"
+
+Ce fichier a été créé dans le script **035_Tables_donnees_LMM**. Il rassemble l'ensemble des résultats issus des modèles linéaires mixtes, réalisées sur les valeurs des EQR.
+Ce fichier contient 5 tables différentes.
+
+```{r chargement_results_LMM, message=TRUE, warning=FALSE, echo = TRUE}
+results_LMM <- load(here("Data/clean_data", "results_LMM.rda"))
+```
+
+```{r affichage_results_LMM, message=FALSE, warning=FALSE, echo = FALSE}
+knitr::kable(data.frame('Tables' = results_LMM))
+```
+
+
+## a. Table "valeurs_lmm_station"
+
+Cette table contient les valeurs de pente et interceptes des tendances stationnelles pour chaque indice. Il y a également les valeurs brutes prédites par les modeles pour chaque années, par station et indice.
+
+```{r affichage_valeurs_lmm_station, message=TRUE, warning=FALSE, echo = TRUE}
+#afficher les 2 premieres lignes de la table
+DT::datatable(
+  head(valeurs_lmm_station, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+```
+
+**Dictionnaire des variables:**<br>
+- **code_station**= code sandre de la station <br>
+- **code_sta_pp** = code du point de prélèvement <br>
+- **libelle_station** = libelle sandre de la station <br>
+- **code_departement**= numéro du département <br>
+- **annee** = Année <br>
+- **annee_c** = année centrée, permettant d'optimiser les modèles <br>
+- **intercept_station** = estimation de l'intercept de la tendance de la station <br>
+- **pente_station** = estimation de la pente de la tendance de la station <br>
+- **fit** = valeur prédite <br>
+- **libelle_indice** = libelle de l'indice biologique <br>
+
+
+
+## b. Tables "valeurs_lmm_RRP" et "valeurs_lmm_RCS"
+
+Ces tables contiennent les tendances régionales estimées par indice pour les deux réseaux étudiés et va permettre de les tracer graphiquement. On a aussi les seuils des intervalles de confiance.
+
+```{r affichage_valeurs_lmm_RCS, message=TRUE, warning=FALSE, echo = TRUE}
+#afficher les 2 premieres lignes de la table
+DT::datatable(
+  head(valeurs_lmm_RCS, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+```
+
+**Dictionnaire des variables:**<br>
+- **annee** = Année <br>
+- **annee_c** = année centrée, permettant d'optimiser les modèles <br>
+- **fit** = valeur de la tendance prédite <br>
+- **lower** = valeur prédite de la limite basse de l'intervalle de confiance<br>
+- **upper** = valeur prédite de la limite haute de l'intervalle de confiance<br>
+- **libelle_indice** = libelle de l'indice biologique <br>
+
+
+## c. Table "pentes_LMM"
+
+Cette table contient les valeurs de pentes stationnelles pour chaque indice.
+
+```{r affichage_pentes_LMM, message=TRUE, warning=FALSE, echo = TRUE}
+#afficher les 2 premieres lignes de la table
+DT::datatable(
+  head(pentes_LMM, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+```
+
+**Dictionnaire des variables:** <br>
+- **code_station**= code sandre de la station <br>
+- **code_sta_pp** = code du point de prélèvement <br>
+- **libelle_station** = libelle sandre de la station <br>
+- **code_departement**= numéro du département <br>
+- **pente** = valeur de pente de la tendance stationnelle <br>
+- **reseaux** = appartenance réseau de la station <br>
+- **libelle_indice** = libelle de l'indice biologique <br>
+
+
+
+## d. Table "donnees_LMM"
+
+Cette table contient les données générales des modèles linéaires mixtes.
+
+```{r affichage_donnees_LMM, message=TRUE, warning=FALSE, echo = TRUE}
+#afficher les 2 premieres lignes de la table
+DT::datatable(
+  head(donnees_LMM, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+```
+
+**Dictionnaire des variables:** <br>
+- **libelle_indice** = libelle de l'indice biologique <br>
+- **reseaux** = appartenance réseau de la station <br>
+- **intercept_estimate** = estimation de l'intercept de la tendance régionale <br>
+- **intercept_pvalue** = p_value associée à l'estimation de l'intercept <br>
+- **annee_estimate** = estimation de la pente de la tendance temporelle régionale <br>
+- **annee_pvalue** = p_value associée à l'estimation de la pente <br>
+- **R2_marginal** = Part de la variance du modèle expliquée par l'effet du temps <br>
+- **R2_conditionnel** = Part de la variance du modele expliquée par l'effet du temps et l’effet aléatoire des stations <br>
+
+
+# 3. Contenu de la table "valeurs_seuils_indices"
+
+Cette table est issue du script **OO3_Recuperation_algotrithmes_SEEE**.
+Elle rassemble les bornes des classes d'état biologique pour les 4 indices étudiés et pour chaque station. En effet, les seuils peuvent varier en fonction de la typologie de la station. 
+
+```{r charger_seuils, message=FALSE, warning=FALSE, echo = FALSE}
+valeurs_seuils_indices <- readRDS(here("Data/clean_data", "valeurs_seuils_indices.rds"))
+```
+
+```{r affichage_seuils, message=TRUE, warning=FALSE, echo = TRUE}
+#afficher les 2 premieres lignes de la table
+DT::datatable(
+  head(valeurs_seuils_indices, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+```
+
+**Dictionnaire des variables:** <br>
+- **CODE_STATION** = code SANDRE de la station <br>
+- **TYPO_NATIONALE** = Code de l'hydroécorégion de niveau 2 <br>
+- **TG_BV** = contient "OUI" s'il s'agit d'un "Très grand" cours d'eau <br>
+- **indice** = libelle de l'indice biologique <br>
+- **classe** = classe d'état biologique <br>
+- **seuil_bas** et **seuil_haut** = bornes inférieures et supérieures de la classe d'état biologique <br>
+- **couleur** = couleur associée à la lasse d'état, utilisée pour les graphiques
+- **libelle_station_hydrobio** = libelle de la station
+
+
+# 4. Contenu de la table "table_element_declassant"
+
+Cette table est issue du script **041_Element_declassant**.
+Elle rassemble l'état biologique donné par chaque indice par station et pour chaque année. Il y a aussi une variable contenant l'état biologique retenu pour la DCE, et une variable contenant le ou les éléments déclassants. 
+
+```{r charger_element_declassant, message=FALSE, warning=FALSE, echo = FALSE}
+table_element_declassant <- readRDS(here("Data/clean_data", "table_element_declassant.rds"))
+```
+
+```{r affichage_element_declassant, message=TRUE, warning=FALSE, echo = TRUE}
+#afficher les 2 premieres lignes de la table
+DT::datatable(
+  head(table_element_declassant, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+```
+
+**Dictionnaire des variables:** <br>
+- **code_station**= code sandre de la station <br>
+- **code_sta_pp** = code du point de prélèvement <br>
+- **libelle_station** = libelle sandre de la station <br>
+- **reseaux** = appartenance réseau de la station <br>
+- **Typologie** = Code de l'hydroécorégion de type 2 à laquelle appartient la station <br>
+- **libelle_typologie** = libelle de l'hydroécorégion à laquelle appartient la station <br>
+- **code_departement**= numéro du département <br>
+- **annee** = Année <br>
+- **IBD**, **IBMR**, **I2M2** et **IPR** = variables contenant la classe d'état biologique déterminé par chaque indice <br>
+- **etat_biologique** = classe d'état biologique retenue pour la DCE selon le principe d'élément déclassant. C'est-à-dire, la moins bonne classe d'état identifiée parmis les 4 indices <br>
+- **element_declassant** = indice associé à la moins bonne classe d'état, seulement si cet état est inférieur à "bon". 
+
