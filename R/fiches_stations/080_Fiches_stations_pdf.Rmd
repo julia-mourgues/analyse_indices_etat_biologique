@@ -96,7 +96,6 @@ library(tinytex)
 load(here("Data/clean_data", "BDD_etude.rda"))
 load(here("Data/clean_data", "results_LMM.rda"))
 
-stations_envt <- readRDS(here("Data/clean_data", "context_stations_complet.rds"))
 element_declassant <- readRDS(here("Data/clean_data", "table_element_declassant.rds"))
 valeurs_seuils <- readRDS(here("Data/clean_data", "valeurs_seuils_indices.rds"))
 ```
@@ -147,7 +146,7 @@ cat("\\end{minipage}\n")
 # 2. Proportions des types d'occupation du sol dans un périmètre de 2,5km autour de la station
 \vspace{-0.5cm}
 ```{r occupation_sol, fig.width=8, fig.height=3.5, out.width="0.8\\textwidth", fig.align='center'}
-landuse(data=stations_envt,
+landuse(data=context_stations_complet,
         id_station=params$code_station)
 ```
 \vspace{0cm}
