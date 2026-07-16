@@ -618,7 +618,7 @@ ggplot2::ggsave(
 
 
 
-## b. Réseau RCS
+## c. Réseau RCS
 
 ```{r}
 #Mettre les coeffs dans un tableau pour les rendre plus faciles à manipuler
@@ -868,10 +868,16 @@ lines_by_station_IPR <- lines_by_station_IPR %>%
 ```{r}
 #tables pour tracer les tendances des réseaux
 data_graph_RRP_IPR <- newdata_RRP %>% 
-  mutate(libelle_indice="IPR")
+  mutate(libelle_indice="IPR") %>% 
+  select(-fit_log,
+         -lower_log,
+         -upper_log)
 
 data_graph_RCS_IPR <- newdata_RCS %>% 
-  mutate(libelle_indice="IPR")
+  mutate(libelle_indice="IPR")%>% 
+  select(-fit_log,
+         -lower_log,
+         -upper_log)
 ```
 
 ```{r}

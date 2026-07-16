@@ -47,6 +47,7 @@ table_element_declassant <- BDD_indices %>%
   ungroup() %>%
   dplyr::select(
     code_station,
+    code_sta_pp,
     libelle_station,
     reseaux,
     Typologie,
@@ -829,7 +830,7 @@ stats_declassants <- stats_declassants %>%
   )
 ```
 
-## Graphique présentant le nombre de fois où un idice a été déclassant par années, et par réseau
+## Graphique présentant le nombre de fois où un indice a été déclassant par années, et par réseau
 
 ```{r}
 freq_declassant_point <- ggplot(stats_declassants,

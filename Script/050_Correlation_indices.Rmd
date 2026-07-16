@@ -63,7 +63,7 @@ pentes_LMM_RRP <- pentes_LMM %>%
 lapply(pentes_LMM_RRP, shapiro.test)
 ```
 La normalité est respectée pour toutes les variables.
-Nous pouvons utiliser les corrélation de Pearson.
+Nous pouvons utiliser les corrélations de Pearson.
 
 
 ```{r}
@@ -275,7 +275,8 @@ pentes_LMM_RCS_ACP<- pentes_LMM %>%
     values_from= pente,
     names_from = libelle_indice) %>% 
   filter(reseaux=="RCS") %>% 
-  dplyr::select(-reseaux, -code_departement )
+  dplyr::select(-reseaux, 
+                -code_departement )
 ```
 
 ```{r}

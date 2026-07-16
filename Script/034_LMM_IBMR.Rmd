@@ -475,8 +475,6 @@ classes_IBMR <- valeurs_seuils %>%
     classe_couleur   = couleur
   )
 
-library(colorspace)
-
 classes_IBMR$classe_couleur <- lighten(classes_IBMR$classe_couleur, 0.7)
 classes_IBMR$classe_libelle <- factor(
   classes_IBMR$classe_libelle,
@@ -663,7 +661,7 @@ BDD_IBMR_RCS_clean <- BDD_IBMR_RCS_clean %>%
 lines_by_station_RCS <- lines_by_station_RCS %>%
   mutate(libelle_station = factor(libelle_station, levels = ordre_stations_RCS))
 
-#Créer les lebels des facettes
+#Créer les labels des facettes
 lab_facet_RCS <- BDD_IBMR_RCS_clean %>%
   ungroup() %>% 
   distinct(libelle_station, code_departement) %>%
@@ -841,9 +839,8 @@ export_pente_df_RCS <- coef(Modele_IBMR_RCS)$code_station %>%
   ) %>% 
   mutate(reseaux="RCS")%>% 
   select(-intercept)
-```
 
-```{r}
+#table rassemblant l'ensemble des pentes stationnelles estimées pour l'IBMR
 pentes_IBMR <- bind_rows(export_pente_df_RRP, export_pente_df_RCS)
 
 pentes_LMM_IBMR <- BDD_IBMR %>%
@@ -854,7 +851,9 @@ pentes_LMM_IBMR <- BDD_IBMR %>%
   mutate(libelle_indice = "IBMR")
 ```
 
+
 ```{r}
+#tables pour tracer les tendances des stations
 lines_by_station_IBMR <- bind_rows(lines_by_station_RRP, lines_by_station_RCS)
 
 lines_by_station_IBMR <- lines_by_station_IBMR %>% 
@@ -862,6 +861,7 @@ lines_by_station_IBMR <- lines_by_station_IBMR %>%
 ```
 
 ```{r}
+#tables pour tracer les tendances des réseaux
 data_graph_RRP_IBMR <- newdata_RRP %>% 
   mutate(libelle_indice="IBMR")
 

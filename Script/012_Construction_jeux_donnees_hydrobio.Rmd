@@ -88,7 +88,7 @@ hydrobio_stations_clean <- stations_hydrobio %>%
 ```
 
 ## 2.Données indices
-Ici on part des données d'indices recalculées avec le SEEE dnas le script 003.
+Ici on part des données d'indices recalculées avec le SEEE dans le script 003.
 ```{r}
 indices_clean <- indices_SEEE %>%
   mutate(
@@ -110,10 +110,12 @@ indices_clean <- indices_SEEE %>%
         annee,
         date_prelevement,
         code_indice,
+        code_qualification,
         libelle_qualification
       ),
     by = c("code_station_hydrobio", "annee", "code_indice")
-  )
+  ) %>% 
+  filter(code_qualification %in% c("0", "1"))  #sélectionner les données "correctes" et "qualification non définissable"
 ```
 
 
@@ -227,7 +229,7 @@ hydrobio_stations_indices <- hydrobio_stations_indices %>%
 
 Il nous manque les opérateurs de 2024 donc on les ajoute à la main.
 ```{r}
-#la règle pour associer les nomsdes opérateurs a été établie apres discussion avec Elise (Labo)
+#la règle pour associer les noms des opérateurs a été établie après discussion avec Elise (Labo)
 hydrobio_stations_indices <- hydrobio_stations_indices %>%
   st_drop_geometry() %>%
   mutate(
@@ -296,7 +298,6 @@ Il nous manque les opérateurs de 2024 donc on les ajoute à la main.
 
 ```{r}
 hydrobio_taxo4 <- hydrobio_taxo3 %>%
-  st_drop_geometry() %>% 
   mutate(
     code_indice = case_when(
       code_support == "13"  ~ "7613",
@@ -314,7 +315,6 @@ hydrobio_taxo4 <- hydrobio_taxo3 %>%
 
 #ajouter les préleveurs de 2024
 hydrobio_taxo_final <- hydrobio_taxo4 %>%
-  st_drop_geometry() %>%
   mutate(
     #Ici le code "O4" correspond à l'agence de l'eau Loire Bretagne et "03" correspond à l'agence de l'eau Seine Normandie.
     NomPreleveur = case_when(
@@ -342,7 +342,7 @@ A adapter si changement dans les données
 ```{r}
 ## Renommer les opérateurs
 
-#Regle de décision pour associer RRP ou RCS
+#Règle de décision pour associer RRP ou RCS
 hydrobio_taxo_final <- hydrobio_taxo_final %>%
   mutate(
     RESEAU = case_when(
@@ -356,7 +356,8 @@ hydrobio_taxo_final <- hydrobio_taxo_final %>%
       TRUE ~  "Prestataire"
     )
   ) %>% 
-  left_join(stations_typologie %>%  
+  left_join(stations_typologie %>%
+              st_drop_geometry() %>% 
               dplyr::select(code_sta_pp, Code.Station.SANDRE, Typologie, Typologie_clean, libelle_typologie),
             by=c("code_station_hydrobio"="Code.Station.SANDRE"))
 ```

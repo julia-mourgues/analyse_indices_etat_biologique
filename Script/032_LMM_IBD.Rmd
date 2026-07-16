@@ -839,6 +839,7 @@ export_pente_df_RCS <- coef(Modele_IBD_RCS)$code_station %>%
 ```
 
 ```{r}
+#table rassemblant l'ensemble des pentes stationnelles estimées pour l'IBD
 pentes_IBD <- bind_rows(export_pente_df_RRP, export_pente_df_RCS)
 
 pentes_LMM_IBD <- BDD_IBD %>%
@@ -850,6 +851,7 @@ pentes_LMM_IBD <- BDD_IBD %>%
 ```
 
 ```{r}
+#tables pour tracer les tendances des stations
 lines_by_station_IBD <- bind_rows(lines_by_station_RRP, lines_by_station_RCS)
 
 lines_by_station_IBD <- lines_by_station_IBD %>% 
@@ -857,6 +859,7 @@ lines_by_station_IBD <- lines_by_station_IBD %>%
 ```
 
 ```{r}
+#tables pour tracer les tendances des réseaux
 data_graph_RRP_IBD <- newdata_RRP %>% 
   mutate(libelle_indice="IBD")
 

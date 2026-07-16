@@ -207,7 +207,14 @@ BDD_taxo_IPR <- BDD_taxo %>%
 #macrophytes
 BDD_taxo_IBMR <- BDD_taxo %>%
   filter(code_support == 27) %>%
-  dplyr::select(-code_taxon_lettre) %>%
+  dplyr::select(
+    -lop_id,
+    -type_peche,
+    -numero_passage_peche,
+    -esp_nom_commun,
+    -ope_surface_calculee_peche,
+    -code_taxon_lettre
+  ) %>%
   funTranscodeIBMR() %>% # mettre à jour les codes taxons
   funIBMR() %>% #associer les scores trophiques et les coefficients de stenoecie aux taxons
   funKi() %>% #calculer les classes d'abondance pour chaque taxon (ki)
@@ -221,7 +228,14 @@ BDD_taxo_IBMR <- BDD_taxo %>%
 #diatomées
 BDD_taxo_IBD <- BDD_taxo %>%
   filter(code_support == 10) %>%
-  dplyr::select(-code_taxon_lettre) %>%
+  dplyr::select(
+    -lop_id,
+    -type_peche,
+    -numero_passage_peche,
+    -esp_nom_commun,
+    -ope_surface_calculee_peche,
+    -code_taxon_lettre
+  ) %>%
   FunParamsIBD() %>%
   rename(code_taxon_lettre = AFNOR) %>%
   mutate(across(
@@ -492,7 +506,9 @@ BDD_indices <- BDD_indices %>%
   group_by(code_station, code_support, code_indice, annee) %>%
   filter(date_prelevement == max(date_prelevement)) %>% #garder une seule valeur par année et par indice pour chaque station
   distinct(date_prelevement, .keep_all = TRUE) %>%
-  ungroup()
+  ungroup() %>% 
+  st_drop_geometry() %>% 
+  select(-geom)
 ```
 
 
@@ -503,5 +519,6 @@ save(BDD_info_stations,
      BDD_indices,
      BDD_taxo_final,
      BDD_metriques,
+     context_stations_complet,
      file = "../Data/clean_data/BDD_etude.rda")
 ```

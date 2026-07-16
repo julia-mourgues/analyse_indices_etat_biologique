@@ -824,9 +824,8 @@ export_pente_df_RCS <- coef(Modele_I2M2_RCS)$code_station %>%
   ) %>% 
   mutate(reseaux="RCS")%>% 
   select(-intercept)
-```
 
-```{r}
+#table rassemblant l'ensemble des pentes stationnelles estimées pour l'I2M2
 pentes_I2M2 <- bind_rows(export_pente_df_RRP, export_pente_df_RCS)
 
 pentes_LMM_I2M2 <- BDD_I2M2 %>%
@@ -838,6 +837,7 @@ pentes_LMM_I2M2 <- BDD_I2M2 %>%
 ```
 
 ```{r}
+#tables pour tracer les tendances des stations
 lines_by_station_I2M2 <- bind_rows(lines_by_station_RRP, lines_by_station_RCS)
 
 lines_by_station_I2M2 <- lines_by_station_I2M2 %>% 
@@ -845,6 +845,7 @@ lines_by_station_I2M2 <- lines_by_station_I2M2 %>%
 ```
 
 ```{r}
+#tables pour tracer les tendances des réseaux
 data_graph_RRP_I2M2 <- newdata_RRP %>% 
   mutate(libelle_indice="I2M2")
 

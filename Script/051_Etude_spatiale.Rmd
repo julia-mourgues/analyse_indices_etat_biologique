@@ -35,7 +35,8 @@ library(data.table)
 
 ```{r}
 load(here("Data/clean_data", "results_LMM.rda"))
-context <- readRDS(here("Data/clean_data", "context_stations_complet.rds"))
+load(here("Data/clean_data", "BDD_etude.rda"))
+
 mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
 ```
 
@@ -43,7 +44,7 @@ mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
 ## Préparation des données
 ```{r}
 #table contenant les variables spatiales
-context <- context %>% 
+context <- context_stations_complet  %>% 
   st_drop_geometry() %>% 
   dplyr::select(-pct, 
                 -distance_mer,
@@ -1063,7 +1064,7 @@ mA_IBMR <- summary(mod_IBMR) #résumé du modèle
 df1_IBMR<-as.data.frame(mA_IBMR$coefmat.full) #coefficients calculés en full.averaging
 
 #récupérer les intervalles de confiance associés aux coefficients des variables
-CI_IBMR <- as.data.frame(confint(mod_test_IBMR, full=T)) 
+CI_IBMR <- as.data.frame(confint(mod_IBMR, full=T)) 
 
 df1_IBMR$CI.min <-CI_IBMR$`2.5 %` #Calculer la limite inférieure de l'intervalle de confiance de chaque variable
 df1_IBMR$CI.max <-CI_IBMR$`97.5 %` #Calculer la limite supérieure de l'intervalle de confiance de chaque variable

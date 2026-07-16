@@ -20,9 +20,12 @@ id_cols1 <- c(
   "Typologie_clean",
   "libelle_typologie",
   "code_taxon_lettre",
+  "libelle_taxon",
   "ope_surface_calculee_peche",
   "type_peche",
-  "numero_passage_peche"
+  "numero_passage_peche",
+  "type_resultat",
+  "operateur"
 )
 
 

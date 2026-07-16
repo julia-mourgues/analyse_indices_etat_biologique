@@ -180,7 +180,7 @@ distrib_densite <- ggplot(BDD_3_cycles, aes(x = resultat_eqr, fill = cycle_DCE))
     legend.text = element_text(size = 8)
   )
 
-#Télécharger le graphiques
+#Télécharger le graphique
 ggsave(
   filename = "distrib_densite.png",
   plot = distrib_densite,

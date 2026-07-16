@@ -75,6 +75,7 @@ funKi <- function(tableFloristique) {
 
 funRegroupeIBMR <- function(data) {
   data %>%
+    ungroup() %>% 
     group_by(
       code_station,
       code_sta_pp,

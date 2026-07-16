@@ -38,7 +38,6 @@ mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
 ## Chargement des fonctions
 ```{r}
 source(here::here("R", "fun_graph_barplot_proportion.R"))
-source(here::here("R","fun_clmm_indices.R"))
 source(here::here("R","fun_graph_diagramme_alluvial.R"))
 source(here::here("R","fun_classe_ecologique.R"))
 ```
@@ -84,7 +83,7 @@ barplot_nombre(data=data_classe,
 
 ## 2.Diagrammes alluviaux - flux entre classes d'état biologique au cours du temps et par indices
 
-On va générer les diagrammes alluviaux pour les deux réseaux séparemment
+On va générer les diagrammes alluviaux pour les deux réseaux séparément
 ```{r}
 diag_alluvial(
   data = data_classe,

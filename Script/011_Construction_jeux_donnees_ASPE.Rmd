@@ -83,7 +83,7 @@ context <- passerelle %>%
 
 ## Jointure avec la table contenant les données d'utilisation du sol créée dans le script 001
 ```{r}
-context_stations2 <- context_stations %>%
+context_stations_complet  <- context_stations %>%
   dplyr::select(-Code.Station.SANDRE, -LIBELLE.SANDRE) %>% 
   left_join(context, by = "code_sta_pp") %>% #jointure sur les codes des points de prélèvement
   dplyr::select(
@@ -99,11 +99,6 @@ context_stations2 <- context_stations %>%
   )
 ```
 
-## Sauvegarder la table
-```{r}
-saveRDS(context_stations2,
-        here("Data/clean_data", "context_stations_complet.rds"))
-```
 
 # Données piscicoles
 
@@ -241,6 +236,7 @@ mes_stations_peche_sans_RHP <- aspe_reseaux_stations %>%
 
 
 ```{r}
+#sauvegarder les données
 saveRDS(mes_stations_peche_sans_RHP, here("Data/clean_data","mes_stations_sans_RHP.rds"))
 saveRDS(mes_stations_RCS, here("Data/clean_data","mes_stations_RCS.rds"))
 saveRDS(mes_stations_RRP, here("Data/clean_data","mes_stations_RRP.rds"))
@@ -396,14 +392,14 @@ aspe_taxo <- aspe_nor2 %>%
     -LIBELLE.SANDRE,
     -geom
   ) %>%
-  distinct()
+  distinct() #enlever les doublons
 ```
 
 
 # Sauvegarder sous forme de .Data
 
 ```{r}
-save(
+save(context_stations_complet,
      aspe_stations,
      aspe_indices,
      aspe_metriques,
