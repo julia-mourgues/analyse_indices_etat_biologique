@@ -22,7 +22,7 @@ knitr::opts_chunk$set(echo = FALSE,
                       message = FALSE)
 ```
 
-```{r, echo = FALSE}
+```{r Logo, echo = FALSE}
 htmltools::img(src = knitr::image_uri(here::here("Script/css", "logo_OFB_v2.png")),
                alt = 'logo',
                style = 'position:absolute; top:0; right:0; padding:10px; width:180px;')
@@ -38,7 +38,7 @@ htmltools::img(src = knitr::image_uri(here::here("Script/css", "logo_OFB_v2.png"
 <br>
 <br>
 
-```{r message=FALSE, warning=FALSE, echo = FALSE}
+```{r chargement_packages, message=FALSE, warning=FALSE, echo = FALSE}
 library(tidyverse)
 library(sf)
 library(ggtext)
@@ -51,17 +51,14 @@ library(ggrepel)
 library(ggiraph)
 ```
 
-```{r message=FALSE, warning=FALSE, echo = FALSE}
+```{r chargement_donnees, message=FALSE, warning=FALSE, echo = FALSE}
 load(here("Data/clean_data", "results_LMM.rda"))
-BDD_indices <- readRDS(here("Data/clean_data", "BDD_indices.rds"))
-
-BDD_metriques <- readRDS(here("Data/clean_data", "BDD_metriques.rds"))
-
+load(here("Data/clean_data", "BDD_etude.rda"))
 mes_stations <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
 ```
 
 
-```{r message=FALSE, warning=FALSE, echo = FALSE}
+```{r chargement_fonctions, message=FALSE, warning=FALSE, echo = FALSE}
 source(here::here("R", "fun_classe_ecologique.R"))
 source(here::here("R", "fun_graph_diagramme_alluvial.R"))
 ```
@@ -72,7 +69,7 @@ source(here::here("R", "fun_graph_diagramme_alluvial.R"))
 
 ## Graphique des tendances générales par réseaux
 
-```{r}
+```{r preparation_graph_1}
 bornes <- list(
   #bornes pour l'IPR
   "IPR"=list(
@@ -113,16 +110,14 @@ names(classes_generales) <- names(bornes)
 classes_generales <- bind_rows(classes_generales)
 
 classes_generales$classe_couleur <- lighten(classes_generales$classe_couleur, 0.7)
-```
 
-```{r}
 valeurs_lmm_RCS$reseau <- "RCS"
 valeurs_lmm_RRP$reseau <- "RRP"
 
 data_graph_all <- bind_rows(valeurs_lmm_RCS, valeurs_lmm_RRP)
 ```
 
-```{r , fig.width=15, fig.height=11, out.width="90%", fig.align='center'}
+```{r graph_tendances_generales, fig.width=15, fig.height=11, out.width="90%", fig.align='center'}
 Tendances_generales <- ggplot(
   BDD_indices,
   aes(x = annee, y = resultat_eqr)
@@ -257,7 +252,7 @@ girafe(ggobj = Tendances_generales)
 
 ## Table des tendances
 <br>
-```{r}
+```{r preparation_table_tendances}
 donnees_LMM2 <- donnees_LMM %>%
   select(-intercept_estimate, -intercept_pvalue ) %>% 
   rename(pente=annee_estimate,
@@ -277,7 +272,7 @@ donnees_LMM2 <- donnees_LMM %>%
 ```
 
 
-```{r out.width="70%"}
+```{r table_tendance, out.width="70%"}
 table_recap <- donnees_LMM2 %>% 
   mutate(reseaux=paste("Réseau ", reseaux)) %>% 
   group_by(reseaux) %>% 
@@ -336,24 +331,24 @@ table_recap
 
 # 2. Statistiques sur le nombre de stations en amélioration et en dégradation
 <br>
-```{r}
+```{r stat}
 stat_pentes_global <- pentes_LMM %>% 
   group_by(libelle_indice, reseaux) %>% 
   summarise(n_amelioration = sum(pente > 0, na.rm = TRUE),
             n_deterioration= sum(pente < 0, na.rm = TRUE),
-            n_total = n_distinct(station),
+            n_total = n_distinct(code_station),
             .groups ="drop")
 
 stat_pentes_dept <- pentes_LMM %>% 
   group_by(code_departement, libelle_indice, reseaux) %>% 
   summarise(n_amelioration = sum(pente > 0, na.rm = TRUE),
             n_deterioration= sum(pente < 0, na.rm = TRUE),
-            n_total = n_distinct(station),
+            n_total = n_distinct(code_station),
             .groups ="drop")
 ```
 
 
-```{r message=FALSE, out.width="70%"}
+```{r table_stat, message=FALSE, out.width="70%"}
 table_stat_global <- stat_pentes_global %>% 
   mutate(reseaux=paste("Réseau ", reseaux)) %>% 
   group_by(reseaux) %>% 
@@ -393,7 +388,7 @@ table_stat_global
 
 # 3. Visualisation spatiales des tendances temporelles des station, par indice
 <br>
-```{r}
+```{r preparation_carte}
 ## Projection Lambert 93
 crs_lambert93 <- sf::st_crs(2154)
 
@@ -440,10 +435,7 @@ district_limits <- suppressWarnings(
 )
 
 district_limits <- sf::st_transform(tmp, crs = crs_lambert93)
-```
 
-
-```{r}
 ## couche SIG des station sur le réseau
 stations <-
   sf::read_sf(
@@ -453,24 +445,17 @@ stations <-
   dplyr::filter(Etat == "actif") %>%
   dplyr::select(station=`Code Station SANDRE`, nom = `LIBELLE SANDRE`)
 
-```
-
-```{r}
 pentes_LMM_large<- pentes_LMM %>% 
   pivot_wider(
     values_from= pente,
     names_from = libelle_indice) %>% 
   select(-libelle_station, -code_departement)
-```
 
-```{r}
 pentes_LMM_test<- pentes_LMM %>% 
   select(-libelle_station, -code_departement)
-```
 
-```{r}
 stations <- stations %>%
-  left_join(pentes_LMM_test) %>%
+  left_join(pentes_LMM_test, by=c("station"="code_station")) %>%
   filter(!is.na(reseaux)) %>%
   dplyr::mutate(
     trend = factor(
@@ -497,7 +482,8 @@ symbol <-
     c("RCS", "RRP"))
 ```
 
-```{r , fig.width=10, fig.height=10, out.width="90%", fig.align='center'}
+
+```{r carte, fig.width=10, fig.height=10, out.width="100%", fig.align='center'}
 ## fond de carte
 base_map <-
   ggplot2::ggplot(background) +
@@ -582,8 +568,8 @@ map_stations <-
   ggplot2::theme(
     legend.key = ggplot2::element_rect(fill = "white"),
     legend.position = "right",
-    legend.title = ggplot2::element_text(size = 12, face = "bold"),
-    legend.text = ggplot2::element_text(size = 12),
+    legend.title = ggplot2::element_text(size = 11, face = "bold"),
+    legend.text = ggplot2::element_text(size = 11),
     plot.title = ggtext::element_textbox_simple(size = 14, margin = margin(t=5,b=10),face = "bold"),
     plot.subtitle = ggtext::element_textbox_simple(size = 13, margin = margin(t=5,b=10)),
     strip.text = ggtext::element_textbox_simple(size=11, margin = margin(t=4, b=4),halign = 0.5),
@@ -612,7 +598,7 @@ girafe(ggobj = map_stations)
 # 4. Histogrammes distribution des pentes
 <br>
 
-```{r , fig.width=9, fig.height=9, out.width="80%", fig.align='center'}
+```{r distrib_pentes, fig.width=9, fig.height=9, out.width="80%", fig.align='center'}
 distrib_pente_interactif <- ggplot(pentes_LMM,
   aes(x = pente)
 ) +
