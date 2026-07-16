@@ -1,0 +1,789 @@
+---
+title: "Présentation scripts"
+author: "Julia"
+date: "2026-04-14"
+output: 
+  html_document:
+      highlight: pygments
+      theme: default
+      toc: true    
+      toc_float: true    
+      toc_depth: 3
+      css: Script/css/ofb_theme_html.css
+---
+```{r Logo, echo = FALSE}
+htmltools::img(
+  src = knitr::image_uri(here::here("Script/css", "logo_OFB_v2.png")),
+  alt = 'logo',
+  style = 'position:absolute; top:0; right:0; padding:10px; width:180px;'
+)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r chargement_packages, message=FALSE, warning=FALSE, echo = FALSE }
+library(here)
+library(tidyverse)
+library(sf)
+library(readxl)
+```
+
+# 00 - Installation
+## 001_Recuperation_stations_réseau_poissons.Rmd 
+
+Cette étude se base sur les stations échantillonnées par pêche scientifique à l'électricité en Normandie. <br>
+Ce premier script permet de :<br>
+- récupérer la liste des stations à partir d'un geopackage;<br>
+- récupérer les typologies des stations à partir d'un fichier excel;<br>
+- récupérer une partie des informations spatiales des stations<br>
+
+**Données d'entrée:**<br>
+- Stations_reseaux.gpkg (disponible sur le réseau)<br>
+- hydrobio_Base_station_active.xlsx (disponible sur le réseau)<br>
+
+```{r chargement_tables_001, message=FALSE, warning=FALSE, echo = FALSE}
+Stations_reseaux <- sf::read_sf(
+  "\\\\ad.intra\\dfs\\COMMUNS\\REGIONS\\nor\\DR\\OFB\\SIG\\DR\\IG_METIER\\EAU\\PECHE\\Stations_reseaux.gpkg"
+) 
+Base_station_active <- read_excel(
+  "R:\\LaboHB\\UHBIO_Seulline\\4 - Référentiel station\\Base station active.xlsx",
+  sheet = "Base active"
+)
+
+#métriques paysagères calculées à partir des données Corine Land Cover 2018
+load(here("Data/start_data", "resultats_clc_indices_paysages.Rdata")) 
+
+#Surface des types d'occupation du sol calculées à partir des données Corine Land Cover 2018
+load(here("Data/start_data", "resultats_clc_stations.Rdata")) 
+
+#table contenant rang de Strahler des cours d'eau et leur largeur
+load(here("Data/start_data", "stations_strahler.Rdata")) 
+```
+
+**Aperçu des données d'entrée:**<br>
+```{r affichage_tables_001, message=TRUE, warning=FALSE, echo = TRUE}
+#table "Stations_reseaux"
+DT::datatable(
+  head(Stations_reseaux, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+#table "Base_station_active"
+DT::datatable(
+  head(Base_station_active, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+#table "resultats_clc_indices_paysages"
+DT::datatable(
+  head(resultats_clc_indices_paysages, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+#table "resultats_clc_stations"
+DT::datatable(
+  head(resultats_clc_stations, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+#table "stations_strahler"
+DT::datatable(
+  head(stations_strahler, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+```
+
+**Fonctions utilisées:**<br>
+- fun_typologie.R<br>
+
+**Objets générés:**<br>
+- **mes_stations_peche.rds**        #table avec les stations actives et informations de base<br>
+- **stations_typologie.rds **       #table avec typologies des stations<br>
+- **Base_station_active_clean.rds** #Version nettoyée de hydrobio_Base_station_active.xlsx<br>
+- **context_stations.rds**          #table avec variables spatiales<br>
+
+
+## 002_Recuperation_donnees_ASPE_et_Hydrobio.Rmd
+
+Ce script permet de récupérer les données Aspe depuis la base de données de l'IDG et les données Hydrobio depuis l'API Hubeau.<br>
+
+Il est nécessaire d'avoir un identifiant et un code d'accès à la base ASPE<br>
+
+**Données d'entrée:**<br>
+- mes_stations_peche.rds
+
+```{r chargement_tables_002, message=FALSE, warning=FALSE, echo = FALSE}
+mes_stations_peche<- readRDS(here("Data/clean_data", 
+                                  "mes_stations_peche.rds")) 
+```
+
+**Aperçu des données d'entrée:**
+```{r affichage_tables_002, message=TRUE, warning=FALSE, echo = TRUE}
+#table "mes_stations_peche"
+DT::datatable(
+  head(mes_stations_peche, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+```
+
+**Fonctions utilisées: **<br>
+- fun_get_data_hydrobio.R
+
+**Objets générés:**<br>
+- **hydrobio_data.rda** = Rdata rassemblant 3 tables constituées des données hydrobio<br>
+- **export aspe au format .rda**  = export de la centaine de tables ASPE<br>
+
+
+## 003_Recuperation_algorithmes_SEEE.Rmd
+
+Ce script permet de récupérer les algorithmes du SEEE et de calculer les indices d'état écologiques ainsi que leurs métriques.
+
+**Données d'entrée:**<br>
+- hydrobio_data.rda<br>
+- Base_station_active_clean.rds<br>
+- stations_typologie.rds<br>
+
+```{r chargement_tables_003, message=FALSE, warning=FALSE, echo = FALSE}
+hydrobio_data<-load(here("Data/raw_data", "hydrobio_data.rda"))
+Base_station_active <- readRDS(here("Data/clean_data", 
+                                    "Base_station_active_clean.rds"))
+stations_typologie <- readRDS(here("Data/clean_data","stations_typologie.rds"))
+```
+
+**Aperçu des données d'entrée:**<br>
+```{r affichage_tables_003, message=TRUE, warning=FALSE, echo = TRUE}
+knitr::kable(data.frame('Tables_hydrobio' = hydrobio_data))
+
+#table "Base_station_active"
+DT::datatable(
+  head(Base_station_active, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+#table "stations_typologie"
+DT::datatable(
+  head(stations_typologie, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+```
+
+**Tables générées:**<br>
+- **valeurs_seuils_indices.rds** = contient les seuils des classes d'état écologique<br>
+- **indices_hydrobio_SEEE.rds**  = contient les résultats des indices et des EQR recalculés<br>
+
+
+# 01 - Construction des jeux de données
+
+## 011_Construction_jeux_donnees_ASPE.Rmd
+Ce script permet de construire le jeu de données rassemblant les informations de pêche à partir des tables téléchargées dans le script 002.<br>
+Il permet aussi de completer la table contenant les variables spatiales.
+
+**Données d'entrée:**<br>
+- mes_stations_peche.rds<br>
+- stations_typologie.rds<br>
+- données aspe au format .rda  #les 100 tables ASPE<br>
+
+```{r chargement_tables_011, message=FALSE, warning=FALSE, echo = FALSE}
+mes_stations_peche<- readRDS(here("Data/clean_data", "mes_stations_peche.rds"))
+stations_typologie <- readRDS(here("Data/clean_data", "stations_typologie.rds"))
+context_stations <- readRDS(here("Data/raw_data", "context_stations.rds"))
+```
+
+**Aperçu des données d'entrée:**<br>
+```{r affichage_tables_011, message=TRUE, warning=FALSE, echo = TRUE}
+
+#table "mes_stations_peche"
+DT::datatable(
+  head(mes_stations_peche, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+#table "stations_typologie"
+DT::datatable(
+  head(stations_typologie, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+#table "context_stations"
+DT::datatable(
+  head(context_stations, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+```
+
+**Objet générés:**<br>
+- **mes_stations_sans_RHP.rds** = liste des codes des stations RCS et RRP<br>
+- **mes_stations_RCS.rds **     = liste des codes des stations RCS <br>
+- **mes_stations_RRP.rds **     = liste des codes des stations RRP<br>
+- **aspe_clean_data.rda  **     = ensemble de 4 tables rassemblant les données Aspe et les données du context spatial<br>
+
+
+## 012_Construction_jeux_donnees_hydrobio.Rmd
+
+Ce script permet de construire le jeu de données rassemblant les 3 dataframe téléchargés via l'API Hub'Eau dans le script 002.<br>
+
+**Données d'entrée:**<br>
+- hydrobio_data.rda<br>
+- Base_station_active_clean.rds<br>
+- mes_stations_peche.rds<br>
+- operation.csv<br>
+- indices_hydrobio_SEEE.rds<br>
+- stations_typologie.rds<br>
+
+```{r chargement_tables_012, message=FALSE, warning=FALSE, echo = FALSE}
+hydrobio_data <- load(here("Data/raw_data", "hydrobio_data.rda"))
+Base_station_active_clean <- readRDS(here("Data/clean_data", "Base_station_active_clean.rds")) #contient des informations supplémentaires du labo Hydrobio
+mes_stations_peche <- readRDS(here("Data/clean_data", "mes_stations_peche.rds"))
+operation <- read.csv(here("Data/start_data", "operation.csv"), sep =
+                             ";") #fichier provenant de Naïades (https://naiades.eaufrance.fr/reports/reportsperyear/HB/Naiades_Export_France_Entiere_HB.zip)
+indices_hydrobio_SEEE <- readRDS(here("Data/clean_data", "indices_hydrobio_SEEE.rds"))
+stations_typologie <- readRDS(here("Data/clean_data", "stations_typologie.rds"))
+```
+
+**Aperçu des données d'entrée:**<br>
+```{r affichage_tables_012, message=TRUE, warning=FALSE, echo = TRUE}
+knitr::kable(data.frame('Tables_hydrobio' = hydrobio_data))
+
+#table "Base_station_active_clean"
+DT::datatable(
+  head(Base_station_active_clean, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+#table "mes_stations_peche"
+DT::datatable(
+  head(mes_stations_peche, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+#table "operation"
+DT::datatable(
+  head(operation, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+#table "indices_hydrobio_SEEE"
+DT::datatable(
+  head(indices_hydrobio_SEEE, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+#table "stations_typologie"
+DT::datatable(
+  head(stations_typologie, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+```
+
+**Fonctions utilisées: **<br>
+- fun_typologie.R
+
+**Tables générées:**<br>
+- **hydrobio_clean_data.rda** = regroupe les tables "hydrobio_stations_clean", "hydrobio_stations_indices" et "hydrobio_taxo_final".
+
+
+
+## 013_Graphs_donnees_dispo.Rmd
+
+Ce script permet de générer les représentations graphiques de la disponibilité des données des indices par années et par stations. On prend en compte les données qualifiées de "correctes" et de "non définissable".
+
+**Données d'entrée:**<br>
+- aspe_clean_data.rda<br>
+- hydrobio_clean_data.rda
+
+```{r chargement_tables_013, message=FALSE, warning=FALSE, echo = FALSE}
+aspe_clean_data <- load(here("Data/clean_data", "aspe_clean_data.rda"))
+hydrobio_clean_data <- load(here("Data/clean_data", "hydrobio_clean_data.rda"))
+```
+
+**Aperçu des données d'entrée:**<br>
+```{r affichage_tables_013, message=TRUE, warning=FALSE, echo = TRUE}
+knitr::kable(data.frame('Tables_aspe' = aspe_clean_data))
+knitr::kable(data.frame('Tables_hydrobio' = hydrobio_clean_data))
+```
+
+**Fonction utilisée:**<br>
+- fun_graph_dispo_donnees.R
+
+**Graphiques générés:**<br>
+- ../Output/0_Disponibilite_donnees  (1 par département)
+
+
+# 02 - Jeu de données final
+
+## 020_BDD_commune.Rmd
+
+Ce script permet de construire une base de données commune aux données ASPE et Hydrobio afin de représenter l'évolution des indices au cours des années
+
+L'objectif est d'obtenir 3 tables: <br>
+- une table contenant les valeurs des différents indices <br>
+- une table contenant les valeurs des métriques calculées à part<br>
+- une table contenant la taxonomie <br>
+
+**Données d'entrée:**
+- aspe_clean_data.rda<br>
+- hydrobio_clean_data.rda<br>
+- mes_stations_sans_RHP.rds<br>
+
+```{r chargement_tables_020, message=FALSE, warning=FALSE, echo = FALSE}
+aspe_clean_data <- load(here("Data/clean_data", "aspe_clean_data.rda"))
+hydrobio_clean_data <- load(here("Data/clean_data", "hydrobio_clean_data.rda"))
+mes_stations_sans_RHP <- readRDS(here("Data/clean_data", "mes_stations_sans_RHP.rds"))
+```
+
+**Aperçu des données d'entrée:**<br>
+```{r affichage_tables_020, message=TRUE, warning=FALSE, echo = TRUE}
+knitr::kable(data.frame('Tables_aspe' = aspe_clean_data))
+knitr::kable(data.frame('Tables_hydrobio' = hydrobio_clean_data))
+print(mes_stations_sans_RHP)
+```
+
+**Fonctions utilisées:**<br>
+- fun_cycle_DCE.R <br>
+- fun_calc_metriques_IBMR.R <br>
+- fun_calc_metriques_IBD.R <br>
+- fun_calc_metriques_I2M2.R <br>
+- fun_calc_metriques_IPR.R <br>
+
+**Tables générées:** <br>
+- **BDD_etude.rda** = Rdata contenant 5 tables "BDD_info_stations", "BDD_indices", "BDD_taxo_final", "BDD_metriques", "context_stations_complet"
+
+
+## 021_Selection_stations.Rmd
+Ce script permet de sélectionner les stations qui seront étudiées sur la base des critères suivants:<br>
+- distance entre les points échantillonnés<br>
+- nombre de données disponibles sur la période<br>
+- limites d'application de l'IPR<br>
+
+**Données d'entrée:**
+- aspe_clean_data.rda
+- hydrobio_clean_data.rda
+- mes_stations_sans_RHP.rds
+- BDD_indices.rds contenue dans "BDD_etude.rda"
+
+```{r chargement_tables_021, message=FALSE, warning=FALSE, echo = FALSE}
+aspe_clean_data <- load(here("Data/clean_data", "aspe_clean_data.rda"))
+hydrobio_clean_data <- load(here("Data/clean_data", "hydrobio_clean_data.rda"))
+mes_stations_sans_RHP<- readRDS(here("Data/clean_data", "mes_stations_sans_RHP.rds")) 
+load(here("Data/clean_data", "BDD_etude.rda"))
+```
+
+**Aperçu des données d'entrée:**<br>
+```{r affichage_tables_021, message=TRUE, warning=FALSE, echo = TRUE}
+knitr::kable(data.frame('Tables_aspe' = aspe_clean_data))
+knitr::kable(data.frame('Tables_hydrobio' = hydrobio_clean_data))
+print(mes_stations_sans_RHP)
+
+#table "BDD_indices"
+DT::datatable(
+  head(BDD_indices, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+```
+
+**Fonction utilisée:**<br>
+- fun_compte_indices.R
+
+**Objets générés:**<br>
+- **liste_stations_retenues.rds** = liste des codes des stations qui seront étudiées<br>
+- **liste_sta_IPR_non_applicable.rds** = liste des codes des stations ù l'IPR n'est pas applicable<br>
+- **stations_etude.csv** = fichier csv contenant le détail des stations étudiées
+
+
+## 022_Distribution_indices.Rmd
+
+Ce script permet de générer des graphiques pour visualiser la distribution des résultats d'EQR de nos indices.
+
+**Données d'entrée:**<br>
+- BDD_indices.rds contenue dans "BDD_etude.rda"<br>
+- liste_stations_retenues.rds
+
+```{r chargement_tables_022, message=FALSE, warning=FALSE, echo = FALSE}
+liste_stations_retenues<- readRDS(here("Data/clean_data", "liste_stations_retenues.rds")) 
+load(here("Data/clean_data", "BDD_etude.rda"))
+```
+
+**Aperçu des données d'entrée:**<br>
+```{r affichage_tables_022, message=TRUE, warning=FALSE, echo = TRUE}
+#table "BDD_indices"
+DT::datatable(
+  head(BDD_indices, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+print(liste_stations_retenues)
+```
+
+
+**Fichiers générés:**<br>
+- **../Output/3_Distribution_indices/distrib_histo.png ** = Histogramme de distribution des EQR<br>
+- **../Output/3_Distribution_indices/distrib_densite.png**  = Graphiques de densité comparant les 3 cycles pour chaque EQR<br>
+
+
+# 03 - Etude des tendances temporelles
+
+## 030_Evolution_indices.Rmd
+
+Ce script permet de visualiser l'évolution des indices au cours des années à l'échelle de la Normandie, en utilisant des régressions linéaires.<br>
+Il permet également de réaliser des test non paramétrique de Mann Kendall suivis des test de Sen Theil afin d'identifier les tendances stationnelles des indices.
+
+**Données d'entrée:**<br>
+- BDD_indices.rds contenue dans "BDD_etude.rda"<br>
+- liste_stations_retenues.rds<br>
+- valeurs_seuils_indices.rds<br>
+
+```{r chargement_tables_030, message=FALSE, warning=FALSE, echo = FALSE}
+liste_stations_retenues<- readRDS(here("Data/clean_data", "liste_stations_retenues.rds")) 
+load(here("Data/clean_data", "BDD_etude.rda"))
+valeurs_seuils_indices <- readRDS(here("Data/clean_data", "valeurs_seuils_indices.rds"))
+```
+
+**Aperçu des données d'entrée:**<br>
+```{r affichage_tables_030, message=TRUE, warning=FALSE, echo = TRUE}
+#table "BDD_indices"
+DT::datatable(
+  head(BDD_indices, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+print(liste_stations_retenues)
+
+#table "valeurs_seuils_indices"
+DT::datatable(
+  head(valeurs_seuils_indices, 5),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 5
+  ),
+  rownames = FALSE
+)
+```
+
+**Fonctions utilisées:**<br>
+- fun_graph_evolution_indice.R<br>
+- fun_mann_kendall_sen.R<br>
+- fun_table_mk_sen.R<br>
+
+**Fichiers générés:**<br>
+- **../Output/1_Tendance_indice/01_Graph_methode_lm**  = Graphiques par indice avec droite de régression linéaire<br>
+- **table_pentes_stations.pdf**<br>
+- **table_tendances_stations.pdf**<br>
+- **table_pentes_tendances_globales.pdf**<br>
+
+## 031_LMM_IPR.Rmd à 034_LMM_IBMR.Rmd
+
+Ces scripts permettent d'estimer les tendances temporelles des 4 indices d'état biologique en utilisant des Modèles Linéaires Mixtes (LMM).
+Les tendances temporelles sont identifiées à l'échelle de la région mais aussi à l'échelle des stations
+
+**Données d'entrée:**<br>
+- BDD_indices.rds contenue dans "BDD_etude.rda"<br>
+- liste_stations_retenues.rds<br>
+- valeurs_seuils_indices.rds<br>
+
+```{r chargement_tables_031, message=FALSE, warning=FALSE, echo = FALSE}
+liste_stations_retenues<- readRDS(here("Data/clean_data", "liste_stations_retenues.rds")) 
+load(here("Data/clean_data", "BDD_etude.rda"))
+valeurs_seuils_indices <- readRDS(here("Data/clean_data", "valeurs_seuils_indices.rds"))
+```
+
+**Aperçu des données d'entrée:**<br>
+```{r affichage_tables_031, message=TRUE, warning=FALSE, echo = TRUE}
+#table "BDD_indices"
+DT::datatable(
+  head(BDD_indices, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+print(liste_stations_retenues)
+
+#table "valeurs_seuils_indices"
+DT::datatable(
+  head(valeurs_seuils_indices, 5),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 5
+  ),
+  rownames = FALSE
+)
+```
+
+**Fonction utilisée:**<br>
+- fun_classe_ecologique.R
+
+**Fichiers générés pour chaque indice:**<br>
+- **Tendances_generales_indice.jpg<br>**
+- **Tendance_indice_RRP.jpg** & **Tendance_indice_RCS.jpg**<br>
+- **donnees_models_indice.rds**<br>
+- **pentes_LMM_indice.rds**<br>
+- **lines_by_station_indice.rds**<br>
+- **data_graph_RRP_indice.rds**<br>
+- **data_graph_RCS_indice.rds**<br>
+
+
+## 035_Tables_donnees_LMM.Rmd
+
+Ce script permet de regrouper les tables contenant tous les résultats des Modèles Linéaires Mixtes. Il permet également de réaliser une carte présentant la répartition spatiale des tendances stationnelles des 4 indices, et de faire quelques statistiques sur les tendances identifiées.
+
+**Données d'entrée:**<br>
+- donnees_models_indice.rds<br>
+- pentes_LMM_indice.rds<br>
+- lines_by_station_indice.rds<br>
+- data_graph_RRP_indice.rds<br>
+- data_graph_RCS_indice.rds<br>
+
+
+**Fichiers générés pour chaque indice:**<br>
+- **results_LMM.rda** = contient 5 tables regroupants les données des LMM des 5 indices <br>
+- **"../Output/1_Tendance_indice/03_LMM/resultats_globaux_modeles.pdf"** = Tableau contenant les résultats globaux des LMM par indices et réseaux <br>
+- **"../Output/1_Tendance_indice/03_LMM/nombre_stations_amelioration_dept.pdf"** = Tableau contenant le nombre de stations qui s'améliorent ou se détériorent<br>
+- **"../Output/1_Tendance_indice/03_LMM/carte_tendance_stations.jpg"** = Carte avec les tendances temporelles des stations<br>
+- **"../Output/1_Tendance_indice/03_LMM"** = Histogrammes des distributions des pentes<br>
+
+
+# 04 - Classes écologiques
+
+## 040_Proportions_classes_ecologiques.Rmd
+
+Ce script permet de modéliser l'évolution des proportion des différents états écologiques en fonction de l'indice étudié.
+
+Il permet de réaliser des diagrammes alluviaux qui permettent de visualiser les changement de classe d'état écologique de chaque station au cours du temps.
+
+
+**Données d'entrée:**<br>
+- BDD_indices.rds contenue dans "BDD_etude.rda"<br>
+- liste_stations_retenues.rds<br>
+
+```{r chargement_tables_040, message=FALSE, warning=FALSE, echo = FALSE}
+liste_stations_retenues<- readRDS(here("Data/clean_data", "liste_stations_retenues.rds")) 
+load(here("Data/clean_data", "BDD_etude.rda"))
+```
+
+**Aperçu des données d'entrée:**<br>
+```{r affichage_tables_040, message=TRUE, warning=FALSE, echo = TRUE}
+#table "BDD_indices"
+DT::datatable(
+  head(BDD_indices, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+print(liste_stations_retenues)
+```
+
+**Fonctions utilisées:**<br>
+- fun_graph_barplot_proportion.R<br>
+- fun_graph_diagramme_alluvial.R<br>
+- fun_classe_ecologique.R<br>
+
+**Fichiers générés pour chaque indice:**<br>
+- **"../Output/4_Proportions_classes_eco/03_Sankey"** = fichier contenant les diagrammes alluviaux <br>
+- **"../Output/4_Proportions_classes_eco/01_Barplot"** = fichier contenant les diagrammes battons présentant le nombre de stations par classe d'état biologique au cours du temps <br>
+
+
+## 041_Element_declassant.Rmd
+
+**Données d'entrée:**<br>
+- BDD_indices.rds contenue dans "BDD_etude.rda"<br>
+- liste_stations_retenues.rds<br>
+
+```{r chargement_tables_041, message=FALSE, warning=FALSE, echo = FALSE}
+liste_stations_retenues<- readRDS(here("Data/clean_data", "liste_stations_retenues.rds")) 
+load(here("Data/clean_data", "BDD_etude.rda"))
+```
+
+**Aperçu des données d'entrée:**<br>
+```{r affichage_tables_041, message=TRUE, warning=FALSE, echo = TRUE}
+#table "BDD_indices"
+DT::datatable(
+  head(BDD_indices, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+print(liste_stations_retenues)
+```
+
+
+**Fichiers générés:**<br>
+- **table_element_declassant.rds** = table contenant l'état biologique des stations au cours du temps, au regard des 4 indices, ainsi que l'état biologique global des stations et le nom de l'élément déclassant.<br>
+- **"../Output/4_Proportions_classes_eco/03_Sankey/Element_declassant/Element_declassant.jpg** = diagrammes alluviaux par réseau<br>
+- **"../Output/4_Proportions_classes_eco/table_element_declassant.html"** = Table récapitulative de l'état biologique des stations au cours du temps<br>
+- **"../Output/4_Proportions_classes_eco/freq_declassant_point.jpg"** = Graphique présentant le nombre de fois où un indice a été déclassant par années, et par réseau
+
+
+# 05 - Correlations.Rmd
+
+## 050_Correlation_indices.Rmd
+
+Ce script permet de d'identifier les corrélation entre les tendances stationnelles des 4 indices s'il y en a. 
+Ici les corrélations effectuées sont des corrélations de Pearson. <br>
+Deux types de représentations graphiques snt utilisées: <br>
+- les matrices de corrélation, qui présentent les coefficient de corrélations entre les variables <br>
+- les ACP qui permettent d'identifier visuellement les relations entre variables
+
+
+**Données d'entrée:**<br>
+- pentes_LMM.rds contenue dans "results_LMM.rda"<br>
+
+```{r chargement_tables_050, message=FALSE, warning=FALSE, echo = FALSE}
+load(here("Data/clean_data", "results_LMM.rda"))
+```
+
+**Aperçu des données d'entrée:**<br>
+```{r affichage_tables_050, message=TRUE, warning=FALSE, echo = TRUE}
+#table "pentes_LMM"
+DT::datatable(
+  head(pentes_LMM, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+```
+
+
+**Fichiers générés:**<br>
+- **"Output/7_Correlations/Pentes/corplot_pentes_reseau_pearson.png"** = matrices de corrélation de pearson entre les pentes stationnelles des indices, par réseau<br>
+- **"Output/7_Correlations/Pentes/ACP_indices_reseau.png"** = ACP réalisée sur les pentes stationnelles des indices, par réseau<br>
+
+
+## 051_Etude_spatiale.Rmd
+
+Ce script permet de déterminer l'influence de 11 variables spatiales sur les tendances stationnelles des indices. <br>
+Des régressions linéaires multiples sont utilisées, couplée à une approche multi-modèles permettant d'associer un coefficient à chaque variable, qui renseigne sur l'importance de la variable dans les modèles.
+
+**Données d'entrée:**<br>
+- pentes_LMM.rds contenue dans "results_LMM.rda"<br>
+- context_stations_complet.rds dans "BDD_etude.rda" <br>
+- liste_stations_retenues.rds
+
+
+```{r chargement_tables_051, message=FALSE, warning=FALSE, echo = FALSE}
+load(here("Data/clean_data", "results_LMM.rda"))
+load(here("Data/clean_data", "BDD_etude.rda"))
+liste_stations_retenues <- readRDS(here("Data/clean_data", "liste_stations_retenues.rds"))
+```
+
+**Aperçu des données d'entrée:**<br>
+```{r affichage_tables_051, message=TRUE, warning=FALSE, echo = TRUE}
+#table "context_stations_complet"
+DT::datatable(
+  head(context_stations_complet, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+) 
+
+#table "pentes_LMM"
+DT::datatable(
+  head(pentes_LMM, 2),
+  options = list(
+    scrollX = TRUE,
+    pageLength = 2
+  ),
+  rownames = FALSE
+)
+
+print(liste_stations_retenues)
+```
+
+
+**Fichiers générés:**<br>
+- **"../Output/6_Analyse_spatiale/ACP_var_paysage.png"** = résultats de l'ACP réalisée sur les variables spatiales <br>
+- **"../Output/6_Analyse_spatiale/result_regressions_multiples.html"** = Tableau rassemblant les Coefficients et poids des variables explicatives<br>
+- **"../Output/6_Analyse_spatiale/donnees_modeles_reg_multiples.pdf"** = Tableau rassemblant les Paramètres des modèles retenus <br>
+- **"../Output/6_Analyse_spatiale/plot_coeff_facet.jpg"** = graphique présentant les coefficients associés à chaque variable spatiale <br>
+
+
